@@ -6,13 +6,9 @@ LMAX = 4
 
 @lru_cache(100)
 def xyz2idx(l):
-    cache = {}
-    ij = 0
-    for t in range(l+1):
-        for u in range(l+1-t):
-            for v in range(l+1-t-u):
-                cache[t,u,v] = ij
-                ij += 1
+    cache = {
+        (t, u, v): ij for ij, (t, u, v) in enumerate(reduced_cart_iter(l))
+    }
     return cache
 
 class _RT:
@@ -69,6 +65,25 @@ def generate_R_index(lmax):
         unroll_R_tensor(l, Ridx)
         offsets.append(len(Ridx.result[0]))
     return Ridx.result, offsets
+
+def unroll_Rt_to_Rt2(l1, l2):
+    idx = xyz2idx(l1+l2)
+    n = 0
+    for kl, (t, u, v) in enumerate(reduced_cart_iter(l1)):
+        phase = (-1)**(t+u+v)
+        for ij, (e, f, g) in enumerate(reduced_cart_iter(l2)):
+            if phase > 0:
+                print(f'Rt2[{n}] = Rt[{idx[t+e,u+f,v+g]}]')
+            else:
+                print(f'Rt2[{n}] = -Rt[{idx[t+e,u+f,v+g]}]')
+            n += 1
+
+def reduced_cart_iter(n):
+    '''Nested loops for Cartesian components, subject to x+y+z <= n'''
+    for x in range(n+1):
+        for y in range(n+1-x):
+            for z in range(n+1-x-y):
+                yield x, y, z
 
 if __name__ == '__main__':
     LMAX = 12

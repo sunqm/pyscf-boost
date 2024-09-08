@@ -6,8 +6,8 @@
 // 2*pi**2.5
 #define PI_FAC  34.98683665524972497
 
-void contract_k_s4(JKMatrix *jk, double *eri,
-                   int ish, int jsh, int ksh, int lsh, int *ao_loc)
+void contract_jk_s4(JKMatrix *jk, double *eri,
+                    int ish, int jsh, int ksh, int lsh, int *ao_loc)
 {
         int i0 = ao_loc[ish  ];
         int i1 = ao_loc[ish+1];
@@ -29,15 +29,27 @@ void contract_k_s4(JKMatrix *jk, double *eri,
                 // unlike libcint, here eri is stored in C-order!
                 for (i = i0; i < i1; i++) {
                 for (j = j0; j < j1; j++) {
-                for (k = k0; k < k1; k++) {
-                for (l = l0; l < l1; l++) {
-                        double s = eri[n];
-                        vk[i*nao+l] += s * dm[j*nao+k];
-                        vk[i*nao+k] += s * dm[j*nao+l];
-                        vk[j*nao+l] += s * dm[i*nao+k];
-                        vk[j*nao+k] += s * dm[i*nao+l];
-                        n++;
-                } } } }
+                        double dm_ji = dm[j*nao+i];
+                        double v_ij = 0.;
+                        for (k = k0; k < k1; k++) {
+                                double v_ik = 0.;
+                                double v_jk = 0.;
+                                for (l = l0; l < l1; l++) {
+                                        double s = eri[n];
+                                        v_ij += s * dm[l*nao+k];
+                                        vj[k*nao+l] += s * dm_ji;
+
+                                        vk[i*nao+l] += s * dm[j*nao+k];
+                                        vk[j*nao+l] += s * dm[i*nao+k];
+                                        v_ik += s * dm[j*nao+l];
+                                        v_jk += s * dm[i*nao+l];
+                                        n++;
+                                }
+                                vk[i*nao+k] += v_ik;
+                                vk[j*nao+k] += v_jk;
+                        }
+                        vj[i*nao+j] += v_ij;
+                } }
                 dm += nao * nao;
                 vj += nao * nao;
                 vk += nao * nao;
@@ -72,6 +84,7 @@ void jk_kernel(MDIntEnvVars *envs, JKMatrix *jk,
         int lprim = bas[lsh*BAS_SLOTS+NPRIM_OF];
         int lij = li + lj;
         int lkl = lk + ll;
+        int l4 = lij + lkl;
         int di = ao_loc[ish+1] - ao_loc[ish];
         int dj = ao_loc[jsh+1] - ao_loc[jsh];
         int dk = ao_loc[ksh+1] - ao_loc[ksh];
@@ -81,7 +94,7 @@ void jk_kernel(MDIntEnvVars *envs, JKMatrix *jk,
         int Et_ij_len = (lij + 1) * (lij + 2) * (lij + 3) / 6;
         int Et_kl_len = (lkl + 1) * (lkl + 2) * (lkl + 3) / 6;
         int Et_kl_lenp = Et_kl_len * kprim * lprim;
-        double *Rt2 = buf + Et_ij_len * Et_kl_len;
+        double *Rt2 = buf + Et_ij_len*Et_kl_len + (l4+1)*(l4+1)*(l4+1);
         double *eri = Rt2 + Et_ij_len * Et_kl_lenp;
         double *RdotE = eri + didj * dkdl;
         double Rpq[3];
@@ -141,20 +154,25 @@ void jk_kernel(MDIntEnvVars *envs, JKMatrix *jk,
                         Rpq[0] = xij - xkl;
                         Rpq[1] = yij - ykl;
                         Rpq[2] = zij - zkl;
-                        get_Rt2(pRt2, lkl, lij, theta, fac, Rpq, buf);
 
-                        if (vj != NULL) {
+                        if (vk != NULL) {
+                                get_Rt2(pRt2, lkl, lij, theta, fac, Rpq, buf);
+                                pRt2 += Et_ij_len * Et_kl_len;
+                        } else {
+                                get_Rt2(Rt2, lkl, lij, theta, fac, Rpq, buf);
                                 double *rhop_kl = rho_kl + kl * Et_kl_len;
                                 double *jvecp_kl = jvec_kl + kl * Et_kl_len;
                                 for (int k = 0; k < Et_kl_len; k++) {
-                                for (int i = 0; i < Et_ij_len; i++) {
-                                        double s = pRt2[k*Et_ij_len+i];
-                                        jvecp_kl[k] += s * rhop_ij[i];
-                                        jvecp_ij[i] += s * rhop_kl[k];
-                                } }
-                        }
-                        if (vk != NULL) {
-                                pRt2 += Et_ij_len * Et_kl_len;
+                                        double rho_kl_val = rhop_kl[k];
+                                        double jvec_kl_val = 0.;
+#pragma GCC ivdep
+                                        for (int i = 0; i < Et_ij_len; i++) {
+                                                double s = pRt2[k*Et_ij_len+i];
+                                                jvec_kl_val += s * rhop_ij[i];
+                                                jvecp_ij[i] += s * rho_kl_val;
+                                        }
+                                        jvecp_kl[k] += jvec_kl_val;
+                                }
                         }
                 } }
 
@@ -172,6 +190,6 @@ void jk_kernel(MDIntEnvVars *envs, JKMatrix *jk,
                 }
         } }
         if (vk != NULL) {
-                contract_k_s4(jk, eri, ish, jsh, ksh, lsh, ao_loc);
+                contract_jk_s4(jk, eri, ish, jsh, ksh, lsh, ao_loc);
         }
 }

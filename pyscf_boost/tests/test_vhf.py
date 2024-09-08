@@ -35,3 +35,6 @@ def test_get_jk():
     ref = scf.hf.get_jk(mol, dm)
     assert abs(vj - ref[0]).max() < 1e-12
     assert abs(vk - ref[1]).max() < 1e-12
+
+if __name__ == '__main__':
+    test_get_jk()

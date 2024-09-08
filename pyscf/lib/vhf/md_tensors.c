@@ -378,12 +378,14 @@ static void iter_Rt_n(double *out, double *Rt, double *rpq, int l)
         int t, u, v, i, k;
         k = 0;
         i = 0;
+#pragma GCC ivdep
         for (v = 0; v < l; v++) {
                 out[k] = rz * Rt[i] + v * Rt[p1[k]];
                 k++; i++;
         }
         i = 0;
         for (u = 0; u < l; u++) {
+#pragma GCC ivdep
         for (v = 0; v < l-u; v++) {
                 out[k] = ry * Rt[i] + u * Rt[p1[k]];
                 k++; i++;
@@ -393,6 +395,7 @@ static void iter_Rt_n(double *out, double *Rt, double *rpq, int l)
                 // corresponding to the nested loops
                 // for (u = 0; u < l-t; u++) for (v = 0; v < l-t-u; v++)
                 int uv;
+#pragma GCC ivdep
                 for (uv = 0; uv < (l-t) * (l-t+1) / 2; uv++) {
                         out[k] = rx * Rt[i] + t * Rt[p1[k]];
                         k++; i++;
@@ -534,93 +537,62 @@ int get_Rt2(double *Rt2, int l1, int l2, double a, double fac, double *rpq,
         return info;
 }
 */
+
 int get_Rt2(double *Rt2, int l1, int l2, double a, double fac, double *rpq,
             double *buf)
 {
         int l = l1 + l2;
+        int info = get_R_tensor(Rt2, l, a, fac, rpq, buf);
         if (l1 == 0) {
-                return get_R_tensor(Rt2, l, a, fac, rpq, buf);
+                return info;
         }
-        int info = get_R_tensor(buf, l, a, fac, rpq, Rt2);
-        int e, f, g, t, u, v;
-        int i, j, i0, j0, i1, j1;
+        int e, f, g, t, u, v, n;
         if (l2 == 0) {
-                for (i = 0, e = 0; e <= l1; e++) {
+                for (n = 0, e = 0; e <= l1; e++) {
                 for (f = 0; f <= l1-e; f++) {
-                for (g = 0; g <= l1-e-f; g++, i++) {
-                        if ((e + f + g) % 2 == 0) {
-                                Rt2[i] = buf[i];
-                        } else {
-                                Rt2[i] = -buf[i];
+                for (g = 0; g <= l1-e-f; g++, n++) {
+                        if ((e + f + g) % 2 == 1) {
+                                Rt2[n] = -Rt2[n];
                         }
                 } } }
                 return info;
         }
 
-        int lll = (l+1)*(l+2)*(l+3)/6;
-        int nf2 = (l2+1)*(l2+2)*(l2+3)/6;
-        int off_et, off_fu, l_et, l_fu, l1_e, l2_t, l1_ef, l2_tu;
-        for (i = 0, e = 0; e <= l1; e++) {
-                i0 = i;
-                l1_e = l1 - e;
-                for (j = 0, t = 0; t <= l2; t++) {
-                        j0 = j;
-                        l2_t = l2 - t;
-                        l_et = l - e - t;
-                        off_et = lll - (l_et+1)*(l_et+2)*(l_et+3)/6 + (l_et+1)*(l_et+2)/2;
-                        for (i = i0, f = 0; f <= l1_e; f++) {
-                                i1 = i;
-                                l1_ef = l1 - e - f;
-if ((e + f) % 2 == 0) {
-        for (j = j0, u = 0; u <= l2_t; u++) {
-                j1 = j;
-                l_fu = l_et - f - u;
-                off_fu = off_et - (l_fu+1)*(l_fu+2)/2;
-                l2_tu = l2 - t - u;
-                for (i = i1, g = 0; g < l1_ef;) {
-                        for (j = j1, v = off_fu+g; v <= off_fu+g+l2_tu; v++, j++) {
-                                Rt2[i*nf2+j] = buf[v];
-                        }
-                        g++; i++;
-                        for (j = j1, v = off_fu+g; v <= off_fu+g+l2_tu; v++, j++) {
-                                Rt2[i*nf2+j] = -buf[v];
-                        }
-                        g++; i++;
-                }
-                if (g <= l1_ef) {
-                        for (j = j1, v = off_fu+g; v <= off_fu+g+l2_tu; v++, j++) {
-                                Rt2[i*nf2+j] = buf[v];
-                        }
-                        g++; i++;
-                }
+        int stride_l = (l+1);
+        int stride_ll = stride_l * (l+1);
+        double *Rsub;
+        for (n = 0, t = 0; t <= l; t++) {
+                Rsub = buf + t*stride_ll;
+                for (u = 0; u <= l-t; u++) {
+#pragma GCC ivdep
+                for (v = 0; v <= l-t-u; v++, n++) {
+                        Rsub[u*stride_l+v] = Rt2[n];
+                } }
         }
-} else {
-        for (j = j0, u = 0; u <= l2_t; u++) {
-                j1 = j;
-                l_fu = l_et - f - u;
-                off_fu = off_et - (l_fu+1)*(l_fu+2)/2;
-                l2_tu = l2 - t - u;
-                for (i = i1, g = 0; g < l1_ef;) {
-                        for (j = j1, v = off_fu+g; v <= off_fu+g+l2_tu; v++, j++) {
-                                Rt2[i*nf2+j] = -buf[v];
+
+        for (n = 0, e = 0; e <= l1; e++) {
+        for (f = 0; f <= l1-e; f++) {
+        for (g = 0; g <= l1-e-f; g++) {
+                if ((e + f + g) % 2 == 0) {
+                        for (t = 0; t <= l2; t++) {
+                                Rsub = buf + (e+t)*stride_ll + f*stride_l + g;
+                                for (u = 0; u <= l2-t; u++) {
+#pragma GCC ivdep
+                                for (v = 0; v <= l2-t-u; v++, n++) {
+                                        Rt2[n] = Rsub[u*stride_l+v];
+                                } }
                         }
-                        g++; i++;
-                        for (j = j1, v = off_fu+g; v <= off_fu+g+l2_tu; v++, j++) {
-                                Rt2[i*nf2+j] = buf[v];
-                        }
-                        g++; i++;
-                }
-                if (g <= l1_ef) {
-                        for (j = j1, v = off_fu+g; v <= off_fu+g+l2_tu; v++, j++) {
-                                Rt2[i*nf2+j] = -buf[v];
-                        }
-                        g++; i++;
-                }
-        }
-}
+                } else {
+                        for (t = 0; t <= l2; t++) {
+                                Rsub = buf + (e+t)*stride_ll + f*stride_l + g;
+                                for (u = 0; u <= l2-t; u++) {
+#pragma GCC ivdep
+                                for (v = 0; v <= l2-t-u; v++, n++) {
+                                        Rt2[n] = -Rsub[u*stride_l+v];
+                                } }
                         }
                 }
-        }
+        } } }
         return info;
 }
 

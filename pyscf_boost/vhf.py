@@ -22,11 +22,13 @@ def get_jk(mol, dm, hermi=1, vhfopt=None, with_j=True, with_k=True, omega=None,
            verbose=None):
     '''Compute J, K matrices with CPU-GPU hybrid algorithm
     '''
-    #log = logger.new_logger(mol, verbose)
+    log = logger.new_logger(mol, verbose)
+    cput0 = (logger.process_clock(), logger.perf_counter())
     if hermi != 1:
         raise NotImplementedError('JK-builder only supports hermitian density matrix')
     if omega is None:
         omega = 0.0
+
     if vhfopt is None:
         vhfopt = _VHFOpt(mol).build()
 
@@ -42,13 +44,19 @@ def get_jk(mol, dm, hermi=1, vhfopt=None, with_j=True, with_k=True, omega=None,
     # reorder dm
     ao_idx = vhfopt.ao_idx
     dms = dms[:,ao_idx[:,None],ao_idx]
-    dm_cond = [lib.condense('absmax', x, ao_loc) for x in dms]
-    dm_cond = np.log(np.max(dm_cond, axis=0) + 1e-300)
-    q_cond = vhfopt.q_cond
 
     vj = vk = None
     vj_ptr = vk_ptr = lib.c_null_ptr()
-    if with_j:
+
+    if with_k:
+        vj = np.zeros(dms.shape)
+        vk = np.zeros(dms.shape)
+        vj_ptr = vj.ctypes
+        vk_ptr = vk.ctypes
+        # assign them to an arbitrary object to avoid invalid pointer
+        jengine_loc = ao_loc
+        Et_dm = dm
+    elif with_j: # call J-engine
         jengine_loc = _make_j_engine_pair_locs(mol)
         jvec = np.zeros((n_dm, jengine_loc[nbas*nbas]))
         vj_ptr = jvec.ctypes
@@ -67,12 +75,11 @@ def get_jk(mol, dm, hermi=1, vhfopt=None, with_j=True, with_k=True, omega=None,
             mol._atm.ctypes, ctypes.c_int(mol.natm),
             mol._bas.ctypes, ctypes.c_int(mol.nbas), mol._env.ctypes)
     else:
-        jengine_loc = ao_loc
-        Et_dm = dm
+        return vj, vk
 
-    if with_k:
-        vk = np.zeros(dms.shape)
-        vk_ptr = vk.ctypes
+    dm_cond = [lib.condense('absmax', x, ao_loc) for x in dms]
+    dm_cond = np.log(np.max(dm_cond, axis=0) + 1e-300)
+    q_cond = vhfopt.q_cond
 
     l_ctr_bas_loc = vhfopt.l_ctr_offsets
     load_Et_cache, Et_offsets = _cache_E_tensor(mol, l_ctr_bas_loc)
@@ -80,6 +87,8 @@ def get_jk(mol, dm, hermi=1, vhfopt=None, with_j=True, with_k=True, omega=None,
     log_cutoff = np.log(vhfopt.direct_scf_tol)
     fn = libvhf_boost.build_jk
 
+    l_symb = [lib.param.ANGULAR[i] for i in vhfopt.uniq_l_ctr[:,0]]
+    t1 = cput0
     n_groups = len(vhfopt.uniq_l_ctr)
     for i in range(n_groups):
         for j in range(i+1):
@@ -99,8 +108,17 @@ def get_jk(mol, dm, hermi=1, vhfopt=None, with_j=True, with_k=True, omega=None,
                        q_cond.ctypes, dm_cond.ctypes, ctypes.c_double(log_cutoff),
                        mol._atm.ctypes, ctypes.c_int(mol.natm),
                        mol._bas.ctypes, ctypes.c_int(mol.nbas), mol._env.ctypes)
+                    t1 = log.timer_debug1(
+                            f'({l_symb[i]}{l_symb[j]}|{l_symb[k]}{l_symb[l]})', *t1)
 
-    if with_j:
+    if with_k:
+        vk[:,ao_idx[:,None],ao_idx] = vk + vk.transpose(0,2,1)
+        vk = vk.reshape(dm.shape)
+        vj[:,ao_idx[:,None],ao_idx] = vj + vj.transpose(0,2,1)
+        vj *= 2.
+        vj = vj.reshape(dm.shape)
+    else:
+        # The J-engine
         nao_cart = ao_loc_cart[-1]
         vj = np.zeros((n_dm, nao_cart, nao_cart))
         libvhf_boost.jengine_dot_Et(
@@ -114,26 +132,19 @@ def get_jk(mol, dm, hermi=1, vhfopt=None, with_j=True, with_k=True, omega=None,
         vj[:,ao_idx[:,None],ao_idx] = vj + vj.transpose(0,2,1)
         vj *= 2.
         vj = vj.reshape(dm.shape)
-
-    if with_k:
-        vk[:,ao_idx[:,None],ao_idx] = vk + vk.transpose(0,2,1)
-        vk = vk.reshape(dm.shape)
+    log.timer('vj and vk', *cput0)
     return vj, vk
 
 def _get_jk(mf, mol=None, dm=None, hermi=1, with_j=True, with_k=True,
             omega=None):
     if omega is not None:
         raise NotImplementedError
-    log = logger.new_logger(mf)
-    cput0 = log.init_timer()
-
     vhfopt = mf.opt.get(omega)
     if vhfopt is None:
         vhfopt = mf.opt[omega] = _VHFOpt(mol, mf.direct_scf_tol)
         vhfopt.build()
 
     vj, vk = get_jk(mol, dm, hermi, vhfopt, with_j, with_k, omega, verbose=log)
-    log.timer('vj and vk', *cput0)
     return vj, vk
 # TODO: patch to hf.SCF.get_jk
 #scf.hf.SCF.get_jk = _get_jk
@@ -148,8 +159,9 @@ class _VHFOpt:
         self.ao_idx = None
         self.q_cond = None
 
-    def build(self, group_size=GROUP_NAO):
+    def build(self, group_size=GROUP_NAO, verbose=None):
         mol = self.mol
+        log = logger.new_logger(mol, verbose)
         cput0 = (logger.process_clock(), logger.perf_counter())
         # Sort basis according to angular momentum and contraction patterns so
         # as to group the basis functions to blocks in GPU kernel.
@@ -164,9 +176,9 @@ class _VHFOpt:
         self.l_ctr_offsets = np.append(0, np.cumsum(l_ctr_counts))
 
         if mol.verbose >= logger.DEBUG:
-            logger.debug1(mol, 'Number of shells for each [l, nctr] group')
+            log.debug('Number of shells for each [l, nprim, nctr] group')
             for l_ctr, n in zip(uniq_l_ctr, l_ctr_counts):
-                logger.debug(mol, '    %s : %s', l_ctr, n)
+                log.debug('    %s : %s', l_ctr, n)
 
         sorted_idx = np.argsort(inv_idx.ravel(), kind='stable').astype(np.int32)
         # Sort contraction coefficients before updating self.mol
@@ -192,7 +204,7 @@ class _VHFOpt:
             mol._bas.ctypes, ctypes.c_int(mol.nbas), mol._env.ctypes)
 
         self.q_cond = np.log(q_cond + 1e-300)
-        logger.timer(mol, 'Initialize q_cond', *cput0)
+        log.timer('Initialize q_cond', *cput0)
         return self
 
 def _split_l_ctr_groups(uniq_l_ctr, l_ctr_counts, group_size):

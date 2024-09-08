@@ -3,7 +3,6 @@
 #include "vhf.h"
 
 #define AO_BLOCKSIZE    64
-#define SIMDD           4
 
 int build_jk(double *vj, double *vk, double *dm, double *Et_dm, int n_dm,
              int *shls_slice, int *ao_loc, int *jengine_loc,
@@ -37,6 +36,7 @@ int build_jk(double *vj, double *vk, double *dm, double *Et_dm, int n_dm,
         int lprim = bas[lsh0*BAS_SLOTS+NPRIM_OF];
         int lij = li + lj;
         int lkl = lk + ll;
+        int l4 = lij + lkl;
         int di = ao_loc[ish0+1] - ao_loc[ish0];
         int dj = ao_loc[jsh0+1] - ao_loc[jsh0];
         int dk = ao_loc[ksh0+1] - ao_loc[ksh0];
@@ -47,8 +47,10 @@ int build_jk(double *vj, double *vk, double *dm, double *Et_dm, int n_dm,
         int Et_kl_len = (lkl + 1) * (lkl + 2) * (lkl + 3) / 6;
         int Et_ij_lenp = Et_ij_len * iprim * jprim;
         int Et_kl_lenp = Et_kl_len * kprim * lprim;
-        //         eri         Rt2_buf               RdotE~Rt2*nprim_kl     RdotE*nprim_ij
-        int size = didj*dkdl + Et_ij_len*Et_kl_len + Et_ij_len*Et_kl_lenp + Et_ij_lenp*dkdl;
+        //         eri         Rt2_buf
+        int size = didj*dkdl + Et_ij_len*Et_kl_len + (l4+1)*(l4+1)*(l4+1) +
+        //         RdotE~Rt2*nprim_kl     RdotE*nprim_ij
+                   Et_ij_len*Et_kl_lenp + Et_ij_lenp*dkdl;
         double *buf = malloc(sizeof(double) * size);
 
         int basblk_i = MAX(AO_BLOCKSIZE/di, 4);
