@@ -90,7 +90,7 @@ int build_jk(double *vj, double *vk, double *dm, double *Et_dm, int n_dm,
                                     (dm_cond[ish*nbas+ksh] < d_cutoff) &&
                                     (dm_cond[ish*nbas+lsh] < d_cutoff)) continue;
 
-                                jk_kernel(&envs, &jk, ish, jsh, ksh, lsh, buf);
+                                MD_jk_kernel(&envs, &jk, ish, jsh, ksh, lsh, buf);
                         } }
                 } }
         } } } }

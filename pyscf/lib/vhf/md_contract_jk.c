@@ -6,8 +6,8 @@
 // 2*pi**2.5
 #define PI_FAC  34.98683665524972497
 
-void contract_jk_s4(JKMatrix *jk, double *eri,
-                    int ish, int jsh, int ksh, int lsh, int *ao_loc)
+void _contract_jk_s4(JKMatrix *jk, double *eri,
+                     int ish, int jsh, int ksh, int lsh, int *ao_loc)
 {
         int i0 = ao_loc[ish  ];
         int i1 = ao_loc[ish+1];
@@ -56,8 +56,87 @@ void contract_jk_s4(JKMatrix *jk, double *eri,
         }
 }
 
-void jk_kernel(MDIntEnvVars *envs, JKMatrix *jk,
-               int ish, int jsh, int ksh, int lsh, double *buf)
+static int _jvec_wo_Rt(double *Rt2, int l1, int l2, int len2,
+                       double a, double fac, double *rpq, double *buf,
+                       double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+{
+        int l = l1 + l2;
+        int info = get_R_tensor(Rt2, l, a, fac, rpq, buf);
+        if (l1 == 0) {
+                double rho_kl_val = rho_kl[0];
+                double jvec_kl_val = 0.;
+                for (int i = 0; i < len2; i++) {
+                        jvec_kl_val += Rt2[i] * rho_ij[i];
+                        jvec_ij[i]  += Rt2[i] * rho_kl_val;
+                }
+                jvec_kl[0] += jvec_kl_val;
+                return info;
+        }
+
+        int e, f, g, t, u, v, n, i, k;
+        double s;
+        if (l2 == 0) {
+                for (n = 0, e = 0; e <= l1; e++) {
+                for (f = 0; f <= l1-e; f++) {
+                for (g = 0; g <= l1-e-f; g++, n++) {
+                        if ((e + f + g) % 2 == 0) {
+                                jvec_kl[n] += Rt2[n] * rho_ij[0];
+                                jvec_ij[0] += Rt2[n] * rho_kl[n];
+                        } else {
+                                jvec_kl[n] -= Rt2[n] * rho_ij[0];
+                                jvec_ij[0] -= Rt2[n] * rho_kl[n];
+                        }
+                } } }
+                return info;
+        }
+
+        int stride_l = (l+1);
+        int stride_ll = stride_l * (l+1);
+        double *Rsub;
+        for (n = 0, t = 0; t <= l; t++) {
+                Rsub = buf + t*stride_ll;
+                for (u = 0; u <= l-t; u++) {
+#pragma GCC ivdep
+                for (v = 0; v <= l-t-u; v++, n++) {
+                        Rsub[u*stride_l+v] = Rt2[n];
+                } }
+        }
+
+        for (k = 0, e = 0; e <= l1; e++) {
+        for (f = 0; f <= l1-e; f++) {
+        for (g = 0; g <= l1-e-f; g++, k++) {
+                double rho_kl_val = rho_kl[k];
+                double jvec_kl_val = 0.;
+                if ((e + f + g) % 2 == 0) {
+                        for (i = 0, t = 0; t <= l2; t++) {
+                                Rsub = buf + (e+t)*stride_ll + f*stride_l + g;
+                                for (u = 0; u <= l2-t; u++) {
+#pragma GCC ivdep
+                                for (v = 0; v <= l2-t-u; v++, i++) {
+                                        s = Rsub[u*stride_l+v];
+                                        jvec_kl_val += s * rho_ij[i];
+                                        jvec_ij[i]  += s * rho_kl_val;
+                                } }
+                        }
+                } else {
+                        for (i = 0, t = 0; t <= l2; t++) {
+                                Rsub = buf + (e+t)*stride_ll + f*stride_l + g;
+                                for (u = 0; u <= l2-t; u++) {
+#pragma GCC ivdep
+                                for (v = 0; v <= l2-t-u; v++, i++) {
+                                        s = Rsub[u*stride_l+v];
+                                        jvec_kl_val -= s * rho_ij[i];
+                                        jvec_ij[i]  -= s * rho_kl_val;
+                                } }
+                        }
+                }
+                jvec_kl[k] += jvec_kl_val;
+        } } }
+        return info;
+}
+
+void MD_jk_kernel(MDIntEnvVars *envs, JKMatrix *jk,
+                  int ish, int jsh, int ksh, int lsh, double *buf)
 {
         int nbas = envs->nbas;
         int *bas = envs->bas;
@@ -155,24 +234,13 @@ void jk_kernel(MDIntEnvVars *envs, JKMatrix *jk,
                         Rpq[1] = yij - ykl;
                         Rpq[2] = zij - zkl;
 
-                        if (vk != NULL) {
+                        if (vk == NULL) {
+                                _jvec_wo_Rt(Rt2, lkl, lij, Et_ij_len, theta, fac, Rpq, buf,
+                                            rhop_ij, rho_kl+kl*Et_kl_len,
+                                            jvecp_ij, jvec_kl+kl*Et_kl_len);
+                        } else {
                                 get_Rt2(pRt2, lkl, lij, theta, fac, Rpq, buf);
                                 pRt2 += Et_ij_len * Et_kl_len;
-                        } else {
-                                get_Rt2(Rt2, lkl, lij, theta, fac, Rpq, buf);
-                                double *rhop_kl = rho_kl + kl * Et_kl_len;
-                                double *jvecp_kl = jvec_kl + kl * Et_kl_len;
-                                for (int k = 0; k < Et_kl_len; k++) {
-                                        double rho_kl_val = rhop_kl[k];
-                                        double jvec_kl_val = 0.;
-#pragma GCC ivdep
-                                        for (int i = 0; i < Et_ij_len; i++) {
-                                                double s = pRt2[k*Et_ij_len+i];
-                                                jvec_kl_val += s * rhop_ij[i];
-                                                jvecp_ij[i] += s * rho_kl_val;
-                                        }
-                                        jvecp_kl[k] += jvec_kl_val;
-                                }
                         }
                 } }
 
@@ -190,6 +258,6 @@ void jk_kernel(MDIntEnvVars *envs, JKMatrix *jk,
                 }
         } }
         if (vk != NULL) {
-                contract_jk_s4(jk, eri, ish, jsh, ksh, lsh, ao_loc);
+                _contract_jk_s4(jk, eri, ish, jsh, ksh, lsh, ao_loc);
         }
 }

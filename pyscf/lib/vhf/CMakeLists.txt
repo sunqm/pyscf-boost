@@ -13,7 +13,7 @@
 # limitations under the License.
 
 add_library(vhf_boost SHARED 
-  md_tensors.c fmt.c jk_driver.c nr_contract_jk.c pair_data.c)
+  md_tensors.c fmt.c jk_driver.c md_contract_jk.c md_pairdata.c)
 
 set_target_properties(vhf_boost PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR})
