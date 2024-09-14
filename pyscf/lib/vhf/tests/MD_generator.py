@@ -73,10 +73,43 @@ def unroll_Rt_to_Rt2(l1, l2):
         phase = (-1)**(t+u+v)
         for ij, (e, f, g) in enumerate(reduced_cart_iter(l2)):
             if phase > 0:
-                print(f'Rt2[{n}] = Rt[{idx[t+e,u+f,v+g]}]')
+                print(f'        Rt2[{n}] = Rt[{idx[t+e,u+f,v+g]}];')
             else:
-                print(f'Rt2[{n}] = -Rt[{idx[t+e,u+f,v+g]}]')
+                print(f'        Rt2[{n}] = -Rt[{idx[t+e,u+f,v+g]}];')
             n += 1
+
+def unroll_rho_dot_Rt2(l1, l2):
+    idx = xyz2idx(l1+l2)
+    print('        double jvec_kl_val, rho_kl_val;')
+    for kl, (t, u, v) in enumerate(reduced_cart_iter(l1)):
+        phase = (-1)**(t+u+v)
+        print(f'        rho_kl_val = rho_kl[{kl}];')
+        print('        jvec_kl_val = 0;')
+        for ij, (e, f, g) in enumerate(reduced_cart_iter(l2)):
+            if phase > 0:
+                print(f'        jvec_kl_val += Rt[{idx[t+e,u+f,v+g]}] * rho_ij[{ij}];')
+                print(f'        jvec_ij[{ij}] += Rt[{idx[t+e,u+f,v+g]}] * rho_kl_val;')
+            else:
+                print(f'        jvec_kl_val -= Rt[{idx[t+e,u+f,v+g]}] * rho_ij[{ij}];')
+                print(f'        jvec_ij[{ij}] -= Rt[{idx[t+e,u+f,v+g]}] * rho_kl_val;')
+        print(f'        jvec_kl[{kl}] += jvec_kl_val;')
+
+def generate_Rt2jvec(lmax):
+    for li in range(lmax+1):
+        for lj in range(lmax+1):
+            print(f'''static void Rt2jvec_{li}_{lj}(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)''')
+            print('{')
+            unroll_rho_dot_Rt2(li, lj)
+            print('}')
+
+def generate_Rt2(lmax):
+    for li in range(lmax+1):
+        for lj in range(lmax+1):
+            print(f'''static void Rt2_{li}_{lj}(double *Rt2, double a, double fac, double *rpq, double *Rt)''')
+            print('{')
+            print(f'        get_R_tensor(Rt, {li+lj}, a, fac, rpq, Rt2);')
+            unroll_Rt_to_Rt2(li, lj)
+            print('}')
 
 def reduced_cart_iter(n):
     '''Nested loops for Cartesian components, subject to x+y+z <= n'''

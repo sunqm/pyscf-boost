@@ -67,16 +67,16 @@ def upward(m, t):
         out.append(f)
     return np.array(out)
 
-MAX_ORDER = 2
-INTERVAL = 1.
-R_MAX = 60.
-DEGREE = 8
+MAX_ORDER = 12 # (ff|ff)
+INTERVAL = 2.
+T_MAX = 60.
+DEGREE = 12
 
 def tabulate_chebfit():
     n = DEGREE + 1
     cheb_nodes = np.cos(np.pi / n * (np.arange(n) + .5))
 
-    intervals = [(a, a+INTERVAL) for a in np.arange(0., R_MAX, INTERVAL)]
+    intervals = [(a, a+INTERVAL) for a in np.arange(0., T_MAX, INTERVAL)]
     cs = []
     for m in range(0, MAX_ORDER+1):
         cs_i = []
@@ -89,12 +89,13 @@ def tabulate_chebfit():
     return cs
 
 db_file = 'chebfit_tab.pkl'
-chebfit_tab = None
+with open(db_file, 'rb') as f:
+    chebfit_tab = pickle.load(f)
+
 def polynomial_approx(l, t):
-    chebfit_tab = tabulate_chebfit()
+    #chebfit_tab = tabulate_chebfit()
     return _cheb_eval(l, t, chebfit_tab[l])
 
-#@numba.njit
 def _cheb_eval(l, t, chebfit_tab):
     interval_id = int(t // INTERVAL)
     c = chebfit_tab[interval_id]
@@ -112,10 +113,22 @@ def _cheb_eval(l, t, chebfit_tab):
     ints_m = c0 + c1*x
     return ints_m
 
+def dump_chebfit_tab(chebfit_tab):
+    print(f'#define MAX_ORDER       {MAX_ORDER}')
+    print(f'#define INTERVAL        {INTERVAL}')
+    print(f'#define T_MAX           {T_MAX}')
+    print(f'#define INTERVALS       {int(T_MAX//INTERVAL)}')
+    print(f'#define DEGREE          {DEGREE}')
+    print('static double BOYS_DATA[] = {')
+    for l, tab in enumerate(chebfit_tab):
+        print(f'// order {l}')
+        print('\n'.join([f'{c:24.17e},' for c in tab.ravel()]))
+    print('};')
+
 if __name__ == '__main__':
-    l = 2
+    #dump_chebfit_tab(chebfit_tab)
+    l = 7
     t = 1e-3
     val = polynomial_approx(l, t)
     ref = boys(l, t)[l]
     print(val - ref, ref)
-    #print(val*mp.exp(-t) - ref*mp.exp(-t), ref*mp.exp(-t))
