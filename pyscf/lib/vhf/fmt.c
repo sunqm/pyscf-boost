@@ -174,10 +174,12 @@ static void fmt_downward(double *f, double t, int m)
                 x *= t / bi;
                 s += x;
         }
-        f[m] = s / b;
-        for (i = m; i > 0; i--) {
+        double fval = s / b;
+        f[m] = fval;
+        for (i = m-1; i >= 0; i--) {
                 b -= 1.;
-                f[i-1] = (e + t * f[i]) / b;
+                fval = (e + t * fval) / b;
+                f[i] = fval;
         }
 }
 
@@ -189,17 +191,22 @@ static void gamma_inc_like(double *f, double t, int m)
                 for (i = 1; i <= m; i++) {
                         f[i] = 1./(2*i+1);
                 }
-        } else if (t < .1+TURNOVER_POINT[m]) {
+        } else if (t < TURNOVER_POINT[m]) {
                 fmt_downward(f, t, m);
         } else {
                 int i;
                 double tt = sqrt(t);
-                f[0] = SQRTPIE4 / tt * erf(tt);
+                double fval = SQRTPIE4 / tt * erf(tt);
+                f[0] = fval;
                 if (m > 0) {
-                        double e = exp(-t);
-                        double b = .5 / t;
-                        for (i = 1; i <= m; i++)
-                                f[i] = b * ((2*i-1) * f[i-1] - e);
+                        double e = .5 * exp(-t);
+                        double b = 1. / t;
+                        double b1 = .5;
+                        for (i = 1; i <= m; i++) {
+                                fval = b * (b1 * fval - e);
+                                f[i] = fval;
+                                b1 += 1.;
+                        }
                 }
         }
 }

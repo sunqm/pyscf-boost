@@ -83,12 +83,28 @@ int build_jk(double *vj, double *vk, double *dm, double *Et_dm, int n_dm,
                                 double q_ijkl = q_ij + q_kl;
                                 if (q_ijkl < cutoff) continue;
                                 double d_cutoff = cutoff - q_ijkl;
-                                if ((dm_cond[jsh*nbas+ish] < d_cutoff) &&
-                                    (dm_cond[lsh*nbas+ksh] < d_cutoff) &&
-                                    (dm_cond[jsh*nbas+ksh] < d_cutoff) &&
-                                    (dm_cond[jsh*nbas+lsh] < d_cutoff) &&
-                                    (dm_cond[ish*nbas+ksh] < d_cutoff) &&
-                                    (dm_cond[ish*nbas+lsh] < d_cutoff)) continue;
+                                if (vk == NULL) {
+                                        // J only
+                                        if ((dm_cond[jsh*nbas+ish] < d_cutoff) &&
+                                            (dm_cond[lsh*nbas+ksh] < d_cutoff)) {
+                                                continue;
+                                        }
+                                } else if (vj == NULL) {
+                                        // K only
+                                        if ((dm_cond[jsh*nbas+ksh] < d_cutoff) &&
+                                            (dm_cond[jsh*nbas+lsh] < d_cutoff) &&
+                                            (dm_cond[ish*nbas+ksh] < d_cutoff) &&
+                                            (dm_cond[ish*nbas+lsh] < d_cutoff)) {
+                                                continue;
+                                        }
+                                } else if ((dm_cond[jsh*nbas+ish] < d_cutoff) &&
+                                           (dm_cond[lsh*nbas+ksh] < d_cutoff) &&
+                                           (dm_cond[jsh*nbas+ksh] < d_cutoff) &&
+                                           (dm_cond[jsh*nbas+lsh] < d_cutoff) &&
+                                           (dm_cond[ish*nbas+ksh] < d_cutoff) &&
+                                           (dm_cond[ish*nbas+lsh] < d_cutoff)) {
+                                        continue;
+                                }
 
                                 MD_jk_kernel(&envs, &jk, ish, jsh, ksh, lsh, buf);
                         } }
