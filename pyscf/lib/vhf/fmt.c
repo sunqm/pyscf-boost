@@ -224,7 +224,7 @@ static inline double _pow(double base, int exponent)
         return result;
 }
 
-void eval_boys(double *boys, int l, double a, double *rpq)
+void eval_boys(double *boys, int l, double a, double fac, double *rpq)
 {
         double rx = rpq[0];
         double ry = rpq[1];
@@ -232,11 +232,10 @@ void eval_boys(double *boys, int l, double a, double *rpq)
         double r2 = rx*rx + ry*ry + rz*rz;
         double a2 = -2. * a;
         gamma_inc_like(boys, a*r2, l);
-        double a2_pow = a2;
         int i;
-        for (i = 1; i <= l; i++) {
-                boys[i] *= a2_pow;
-                a2_pow *= a2;
+        for (int i = 0; i <= l; i++) {
+                fac *= a2;
+                boys[i] *= fac;
         }
 }
 
@@ -244,7 +243,7 @@ void eval_boys(double *boys, int l, double a, double *rpq)
 // = b \int_0^1 (bv)^(2m) exp(-tb^2 v^2) dv
 // = b^(2m+1) \int_0^1 v^(2m) exp(-(tb^2)v^2) dv
 // = b^(2m+1) F(m, tb^2)
-void eval_boys_erf(double *boys, int l, double a, double bound, double *rpq)
+void eval_boys_erf(double *boys, int l, double a, double fac, double bound, double *rpq)
 {
         double rx = rpq[0];
         double ry = rpq[1];
@@ -254,15 +253,13 @@ void eval_boys_erf(double *boys, int l, double a, double bound, double *rpq)
         gamma_inc_like(boys, a*r2*bound*bound, l);
         boys[0] *= bound;
         double a2b2 = a2 * bound*bound;
-        double a2b2_pow = a2b2;
-        int i;
-        for (i = 1; i <= l; i++) {
-                boys[i] *= a2b2_pow;
-                a2b2_pow *= a2b2;
+        for (int i = 0; i <= l; i++) {
+                fac *= a2b2;
+                boys[i] *= fac;
         }
 }
 
-void eval_boys_erfc(double *boys, int l, double a, double bound, double *rpq)
+void eval_boys_erfc(double *boys, int l, double a, double fac, double bound, double *rpq)
 {
         double rx = rpq[0];
         double ry = rpq[1];
@@ -272,12 +269,11 @@ void eval_boys_erfc(double *boys, int l, double a, double bound, double *rpq)
         gamma_inc_like(boys, a*r2*bound*bound, l);
         boys[0] *= (1. - bound);
         double a2b2 = a2 * bound*bound;
-        double a2_pow = a2;
-        double a2b2_pow = a2b2;
-        int i;
-        for (i = 1; i <= l; i++) {
-                boys[i] *= a2_pow - a2b2_pow;
+        double a2_pow = fac;
+        double a2b2_pow = fac;
+        for (int i = 0; i <= l; i++) {
                 a2_pow *= a2;
                 a2b2_pow *= a2b2;
+                boys[i] *= a2_pow - a2b2_pow;
         }
 }

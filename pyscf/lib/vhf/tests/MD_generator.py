@@ -94,7 +94,7 @@ def unroll_rho_dot_Rt2(l1, l2):
                 print(f'        jvec_ij[{ij}] -= Rt[{idx[t+e,u+f,v+g]}] * rho_kl_val;')
         print(f'        jvec_kl[{kl}] += jvec_kl_val;')
 
-def generate_Rt2jvec(lmax):
+def generate_Rt2jvec(lmax=3):
     for li in range(lmax+1):
         for lj in range(lmax+1):
             print(f'''static void Rt2jvec_{li}_{lj}(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)''')
@@ -102,7 +102,7 @@ def generate_Rt2jvec(lmax):
             unroll_rho_dot_Rt2(li, lj)
             print('}')
 
-def generate_Rt2(lmax):
+def generate_Rt2(lmax=3):
     for li in range(lmax+1):
         for lj in range(lmax+1):
             print(f'''static void Rt2_{li}_{lj}(double *Rt2, double a, double fac, double *rpq, double *Rt)''')
@@ -118,9 +118,8 @@ def reduced_cart_iter(n):
             for z in range(n+1-x-y):
                 yield x, y, z
 
-if __name__ == '__main__':
-    LMAX = 12
-    r_idx, offsets = generate_R_index(LMAX)
+def generate_Rt_idx(lmax=12):
+    r_idx, offsets = generate_R_index(lmax+1)
     for ix, idx in enumerate(r_idx):
         print(f'static int Rt{ix}_idx[] = {{')
         for l, (k0, k1) in enumerate(itertools.pairwise(offsets)):
@@ -137,6 +136,8 @@ if __name__ == '__main__':
     print(','.join([str(x) for x in offsets]))
     print('};')
 
+
+def generate_iter_Rt(lmax=6):
     t = jinja2.Template('''static void iter_Rt_{{l}}(double *out, double *Rt, double *rpq)
 {
         double rx = rpq[0];
@@ -147,7 +148,13 @@ if __name__ == '__main__':
 {%- endfor %}
 }
 ''')
-    for l in range(1, 7):
+    for l in range(1, lmax+1):
         code = unroll_R_tensor(l, ToC())
         print(t.render(l=l, code=code))
         print()
+
+if __name__ == '__main__':
+    #generate_Rt_idx(12)
+    #generate_iter_Rt(6)
+    #generate_Rt2jvec(3)
+    generate_Rt2(3)

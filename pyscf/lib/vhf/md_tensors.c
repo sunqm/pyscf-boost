@@ -2,8 +2,7 @@
 #include <math.h>
 #include "vhf.h"
 
-void eval_boys(double *Rt, int l, double a, double *rpq);
-void eval_boys_polyfit(double *Rt, int l, double a, double *rpq);
+void eval_boys(double *Rt, int l, double a, double fac, double *rpq);
 
 #define LSUM_MAX        (LMAX*4)
 #define RTIDX_MAX       12
@@ -453,23 +452,18 @@ static void iter_Rt_iter(double *out, double *Rt, double *rpq, int l)
         }
 }
 
-int get_R_tensor(double *Rt, int l, double a, double fac, double *rpq,
-                 double *buf)
+int get_R_tensor(double *Rt, int l, double a, double fac, double *rpq, double *buf)
 {
         if (l > LSUM_MAX) {
                 return -1;
         }
         if (l == 0) {
-                eval_boys(Rt, l, a, rpq);
-                Rt[0] *= fac;
+                eval_boys(Rt, l, a, fac, rpq);
                 return 0;
         }
 
         double boys[LSUM_MAX+1];
-        eval_boys(boys, l, a, rpq);
-        for (int n = 0; n <= l; n++) {
-                boys[n] *= fac;
-        }
+        eval_boys(boys, l, a, fac, rpq);
         if (l == 1) {
                 Rt[0] = boys[0];
                 iter_Rt_1(Rt, boys+1, rpq);
