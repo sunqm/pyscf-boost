@@ -60,8 +60,6 @@ void MD_jk_kernel(MDIntEnvVars *envs, JKMatrix *jk,
                   int ish, int jsh, int ksh, int lsh, double *buf);
 
 int get_R_tensor(double *Rt, int l, double a, double fac, double *rpq, double *buf);
-int get_Rt2(double *Rt2, int l1, int l2, double a, double fac, double *rpq, double *buf);
+void get_Rt2(double *Rt2, int l1, int l2, double a, double fac, double *rpq, double *buf);
 void dgemm_(char*, char*, int*, int*, int*, double*, double*, int*, double*, int*,
             double*, double*, int*);
-
-void jk_kernel_simd(MDIntEnvVars *envs, JKMatrix *jk, int *shl_quartets, double *buf);

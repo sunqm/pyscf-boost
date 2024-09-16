@@ -1,9 +1,12 @@
 #include <float.h>
 #include <math.h>
+#include "simd.h"
+#include "vhf.h"
 
-#define SML_FLOAT64   (DBL_EPSILON * .5)
-#define SQRTPIE4      .8862269254527580136490837416705725913987747280611935641069038949264
-#define ERFC_bound    200
+#define LSUM_MAX        (LMAX*4)
+#define SML_FLOAT64     (DBL_EPSILON * .5)
+#define SQRTPIE4        .8862269254527580136490837416705725913987747280611935641069038949264
+#define ERFC_bound      200
 
 // TODO: Chebyshev for fmt1 at m
 
@@ -165,12 +168,13 @@ static void fmt_downward(double *f, double t, int m)
 {
         int i;
         double b = m + 0.5;
-        double bi;
+        double bi = b;
         double e = .5 * exp(-t);
         double x = e;
         double s = e;
         double tol = SML_FLOAT64 * e;
-        for (bi = b + 1.; x > tol; bi += 1.) {
+        while (x > tol) {
+                bi += 1.;
                 x *= t / bi;
                 s += x;
         }
@@ -183,7 +187,7 @@ static void fmt_downward(double *f, double t, int m)
         }
 }
 
-static void gamma_inc_like(double *f, double t, int m)
+void gamma_inc_like(double *f, double t, int m)
 {
         if (t == 0) {
                 int i;
@@ -192,6 +196,7 @@ static void gamma_inc_like(double *f, double t, int m)
                         f[i] = 1./(2*i+1);
                 }
         } else if (t < TURNOVER_POINT[m]) {
+                // assert (t < 700)
                 fmt_downward(f, t, m);
         } else {
                 int i;
@@ -232,8 +237,8 @@ void eval_boys(double *boys, int l, double a, double fac, double *rpq)
         double r2 = rx*rx + ry*ry + rz*rz;
         double a2 = -2. * a;
         gamma_inc_like(boys, a*r2, l);
-        int i;
-        for (int i = 0; i <= l; i++) {
+        boys[0] *= fac;
+        for (int i = 1; i <= l; i++) {
                 fac *= a2;
                 boys[i] *= fac;
         }
@@ -251,9 +256,9 @@ void eval_boys_erf(double *boys, int l, double a, double fac, double bound, doub
         double r2 = rx*rx + ry*ry + rz*rz;
         double a2 = -2. * a;
         gamma_inc_like(boys, a*r2*bound*bound, l);
-        boys[0] *= bound;
+        boys[0] *= bound * fac;
         double a2b2 = a2 * bound*bound;
-        for (int i = 0; i <= l; i++) {
+        for (int i = 1; i <= l; i++) {
                 fac *= a2b2;
                 boys[i] *= fac;
         }
@@ -267,13 +272,95 @@ void eval_boys_erfc(double *boys, int l, double a, double fac, double bound, dou
         double r2 = rx*rx + ry*ry + rz*rz;
         double a2 = -2. * a;
         gamma_inc_like(boys, a*r2*bound*bound, l);
-        boys[0] *= (1. - bound);
+        boys[0] *= (1. - bound) * fac;
         double a2b2 = a2 * bound*bound;
         double a2_pow = fac;
         double a2b2_pow = fac;
-        for (int i = 0; i <= l; i++) {
+        for (int i = 1; i <= l; i++) {
                 a2_pow *= a2;
                 a2b2_pow *= a2b2;
                 boys[i] *= a2_pow - a2b2_pow;
         }
 }
+
+#ifdef SIMDD
+static __MD _mm_expn(__MD t)
+{
+        __MD e = -t;
+        double *_e = (double *)&e;
+        for (int i = 0; i < SIMDD; i++) {
+                _e[i] = exp(_e[i]);
+        }
+        return e;
+}
+
+static void gamma_inc_like_simd(__MD *f, __MD t, int m)
+{
+        if (MM_CMP(t, MM_SET1(TURNOVER_POINT[m]), _CMP_LT_OQ) == 0) { // all(t > .36*m)
+                __MD tt = MM_SQRT(t);
+                __MD erf_tt = tt;
+                double *_erf_tt = (double *)&erf_tt;
+                for (int k = 0; k < SIMDD; k++) {
+                        _erf_tt[k] = erf(_erf_tt[k]);
+                }
+                __MD fval = MM_SET1(SQRTPIE4) / tt * erf_tt;
+                f[0] = fval;
+                if (m > 0) {
+                        __MD c1 = MM_SET1(1.);
+                        __MD i5 = MM_SET1(.5);
+                        __MD e = i5 * _mm_expn(t); // exp(-t)
+                        __MD b = c1 / t;
+                        for (int i = 1; i <= m; i++) {
+                                fval = b * (i5 * fval - e);
+                                f[i] = fval;
+                                i5 += c1;
+                        }
+                }
+        //} else if (MM_CMP(t, MM_SET1(600.), _CMP_GT_OQ) == 0) { // all(t < 600)
+        //        __MD b = MM_SET1(m + 0.5);
+        //        __MD bi = b;
+        //        __MD c1 = MM_SET1(1.);
+        //        __MD e = MM_SET1(.5) * _mm_expn(t); // .5 * exp(-t)
+        //        __MD x = e;
+        //        __MD s = e;
+        //        __MD tol = MM_SET1(SML_FLOAT64) * e;
+        //        while (MM_CMP(x, tol, _CMP_GT_OQ) != 0) { // any(x > tol)
+        //                bi = bi + c1;
+        //                x *= t / bi;
+        //                s += x;
+        //        }
+        //        __MD fval = s / b;
+        //        f[m] = fval;
+        //        for (int i = m-1; i >= 0; i--) {
+        //                b -= c1;
+        //                fval = (e + t * fval) / b;
+        //                f[i] = fval;
+        //        }
+        } else {
+                double *_t = (double *)&t;
+                double *_f = (double *)f;
+                double tmp[(LSUM_MAX+1)];
+                for (int k = 0; k < SIMDD; k++) {
+                        gamma_inc_like(tmp, _t[k], m);
+                        for (int i = 0; i <= m; i++) {
+                                _f[i*SIMDD+k] = tmp[i];
+                        }
+                }
+        }
+}
+
+void eval_boys_simd(__MD *boys, int l, __MD a, __MD fac, __MD *rpq)
+{
+        __MD rx = rpq[0];
+        __MD ry = rpq[1];
+        __MD rz = rpq[2];
+        __MD r2 = rx*rx + ry*ry + rz*rz;
+        __MD a2 = -2. * a;
+        gamma_inc_like_simd(boys, a*r2, l);
+        boys[0] *= fac;
+        for (int i = 1; i <= l; i++) {
+                fac *= a2;
+                boys[i] *= fac;
+        }
+}
+#endif

@@ -85,11 +85,11 @@ def get_jk(mol, dm, hermi=1, vhfopt=None, with_j=True, with_k=True, omega=None,
     load_Et_cache, Et_offsets = _cache_E_tensor(mol, l_ctr_bas_loc)
 
     log_cutoff = np.log(vhfopt.direct_scf_tol)
-    fn = libvhf_boost.build_jk
-
     l_symb = [lib.param.ANGULAR[i] for i in vhfopt.uniq_l_ctr[:,0]]
-    t1 = cput0
     n_groups = len(vhfopt.uniq_l_ctr)
+    fn = libvhf_boost.build_jk_simd
+
+    t1 = cput0
     for i in range(n_groups):
         for j in range(i+1):
             ij_shls = (l_ctr_bas_loc[i], l_ctr_bas_loc[i+1],

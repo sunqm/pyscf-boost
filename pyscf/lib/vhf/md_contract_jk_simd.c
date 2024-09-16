@@ -1,75 +1,32 @@
 #include <stdlib.h>
 #include <math.h>
 #include <assert.h>
+#include "simd.h"
 #include "vhf.h"
+
+int get_R_tensor_simd(__MD *Rt, int l, __MD a, __MD fac, __MD *rpq, __MD *buf);
+void get_Rt2_simd(double *Rt2, int l1, int l2, __MD a, __MD fac, __MD *rpq, __MD *buf,
+                  __MI32 idx_Rt2, int len2);
+void _contract_jk_s4(JKMatrix *jk, double *eri,
+                     int ish, int jsh, int ksh, int lsh, int *ao_loc);
 
 // 2*pi**2.5
 #define PI_FAC  34.98683665524972497
 
-void _contract_jk_s4(JKMatrix *jk, double *eri,
-                     int ish, int jsh, int ksh, int lsh, int *ao_loc)
+static void Rt2jvec_0_0(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        int i0 = ao_loc[ish  ];
-        int i1 = ao_loc[ish+1];
-        int j0 = ao_loc[jsh  ];
-        int j1 = ao_loc[jsh+1];
-        int k0 = ao_loc[ksh  ];
-        int k1 = ao_loc[ksh+1];
-        int l0 = ao_loc[lsh  ];
-        int l1 = ao_loc[lsh+1];
-        int nao = jk->nao;
-        int n_dm = jk->n_dm;
-        double *vj = jk->vj;
-        double *vk = jk->vk;
-        double *dm = jk->dm;
-        int i, j, k, l, n, i_dm;
-
-        for (i_dm = 0; i_dm < n_dm; i_dm++) {
-                n = 0;
-                // unlike libcint, here eri is stored in C-order!
-                for (i = i0; i < i1; i++) {
-                for (j = j0; j < j1; j++) {
-                        double dm_ji = dm[j*nao+i];
-                        double v_ij = 0.;
-                        for (k = k0; k < k1; k++) {
-                                double v_ik = 0.;
-                                double v_jk = 0.;
-                                for (l = l0; l < l1; l++) {
-                                        double s = eri[n];
-                                        v_ij += s * dm[l*nao+k];
-                                        vj[k*nao+l] += s * dm_ji;
-
-                                        vk[i*nao+l] += s * dm[j*nao+k];
-                                        vk[j*nao+l] += s * dm[i*nao+k];
-                                        v_ik += s * dm[j*nao+l];
-                                        v_jk += s * dm[i*nao+l];
-                                        n++;
-                                }
-                                vk[i*nao+k] += v_ik;
-                                vk[j*nao+k] += v_jk;
-                        }
-                        vj[i*nao+j] += v_ij;
-                } }
-                dm += nao * nao;
-                vj += nao * nao;
-                vk += nao * nao;
-        }
-}
-
-static void Rt2jvec_0_0(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
-{
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
 }
-static void Rt2jvec_0_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_0_1(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl_val += Rt[1] * rho_ij[1];
@@ -80,11 +37,11 @@ static void Rt2jvec_0_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[3] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
 }
-static void Rt2jvec_0_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_0_2(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl_val += Rt[1] * rho_ij[1];
@@ -107,11 +64,11 @@ static void Rt2jvec_0_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[9] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
 }
-static void Rt2jvec_0_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_0_3(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl_val += Rt[1] * rho_ij[1];
@@ -154,35 +111,35 @@ static void Rt2jvec_0_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[19] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
 }
-static void Rt2jvec_1_0(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_1_0(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
         rho_kl_val = rho_kl[1];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[1] * rho_ij[0];
         jvec_ij[0] -= Rt[1] * rho_kl_val;
         jvec_kl[1] += jvec_kl_val;
         rho_kl_val = rho_kl[2];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[2] * rho_ij[0];
         jvec_ij[0] -= Rt[2] * rho_kl_val;
         jvec_kl[2] += jvec_kl_val;
         rho_kl_val = rho_kl[3];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[3] * rho_ij[0];
         jvec_ij[0] -= Rt[3] * rho_kl_val;
         jvec_kl[3] += jvec_kl_val;
 }
-static void Rt2jvec_1_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_1_1(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl_val += Rt[1] * rho_ij[1];
@@ -193,7 +150,7 @@ static void Rt2jvec_1_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[6] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
         rho_kl_val = rho_kl[1];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[1] * rho_ij[0];
         jvec_ij[0] -= Rt[1] * rho_kl_val;
         jvec_kl_val -= Rt[2] * rho_ij[1];
@@ -204,7 +161,7 @@ static void Rt2jvec_1_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[7] * rho_kl_val;
         jvec_kl[1] += jvec_kl_val;
         rho_kl_val = rho_kl[2];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[3] * rho_ij[0];
         jvec_ij[0] -= Rt[3] * rho_kl_val;
         jvec_kl_val -= Rt[4] * rho_ij[1];
@@ -215,7 +172,7 @@ static void Rt2jvec_1_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[8] * rho_kl_val;
         jvec_kl[2] += jvec_kl_val;
         rho_kl_val = rho_kl[3];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[6] * rho_ij[0];
         jvec_ij[0] -= Rt[6] * rho_kl_val;
         jvec_kl_val -= Rt[7] * rho_ij[1];
@@ -226,11 +183,11 @@ static void Rt2jvec_1_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[9] * rho_kl_val;
         jvec_kl[3] += jvec_kl_val;
 }
-static void Rt2jvec_1_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_1_2(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl_val += Rt[1] * rho_ij[1];
@@ -253,7 +210,7 @@ static void Rt2jvec_1_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[16] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
         rho_kl_val = rho_kl[1];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[1] * rho_ij[0];
         jvec_ij[0] -= Rt[1] * rho_kl_val;
         jvec_kl_val -= Rt[2] * rho_ij[1];
@@ -276,7 +233,7 @@ static void Rt2jvec_1_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[17] * rho_kl_val;
         jvec_kl[1] += jvec_kl_val;
         rho_kl_val = rho_kl[2];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[4] * rho_ij[0];
         jvec_ij[0] -= Rt[4] * rho_kl_val;
         jvec_kl_val -= Rt[5] * rho_ij[1];
@@ -299,7 +256,7 @@ static void Rt2jvec_1_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[18] * rho_kl_val;
         jvec_kl[2] += jvec_kl_val;
         rho_kl_val = rho_kl[3];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[10] * rho_ij[0];
         jvec_ij[0] -= Rt[10] * rho_kl_val;
         jvec_kl_val -= Rt[11] * rho_ij[1];
@@ -322,11 +279,11 @@ static void Rt2jvec_1_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[19] * rho_kl_val;
         jvec_kl[3] += jvec_kl_val;
 }
-static void Rt2jvec_1_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_1_3(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl_val += Rt[1] * rho_ij[1];
@@ -369,7 +326,7 @@ static void Rt2jvec_1_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[31] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
         rho_kl_val = rho_kl[1];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[1] * rho_ij[0];
         jvec_ij[0] -= Rt[1] * rho_kl_val;
         jvec_kl_val -= Rt[2] * rho_ij[1];
@@ -412,7 +369,7 @@ static void Rt2jvec_1_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[32] * rho_kl_val;
         jvec_kl[1] += jvec_kl_val;
         rho_kl_val = rho_kl[2];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[5] * rho_ij[0];
         jvec_ij[0] -= Rt[5] * rho_kl_val;
         jvec_kl_val -= Rt[6] * rho_ij[1];
@@ -455,7 +412,7 @@ static void Rt2jvec_1_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[33] * rho_kl_val;
         jvec_kl[2] += jvec_kl_val;
         rho_kl_val = rho_kl[3];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[15] * rho_ij[0];
         jvec_ij[0] -= Rt[15] * rho_kl_val;
         jvec_kl_val -= Rt[16] * rho_ij[1];
@@ -498,65 +455,65 @@ static void Rt2jvec_1_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[34] * rho_kl_val;
         jvec_kl[3] += jvec_kl_val;
 }
-static void Rt2jvec_2_0(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_2_0(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
         rho_kl_val = rho_kl[1];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[1] * rho_ij[0];
         jvec_ij[0] -= Rt[1] * rho_kl_val;
         jvec_kl[1] += jvec_kl_val;
         rho_kl_val = rho_kl[2];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[2] * rho_ij[0];
         jvec_ij[0] += Rt[2] * rho_kl_val;
         jvec_kl[2] += jvec_kl_val;
         rho_kl_val = rho_kl[3];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[3] * rho_ij[0];
         jvec_ij[0] -= Rt[3] * rho_kl_val;
         jvec_kl[3] += jvec_kl_val;
         rho_kl_val = rho_kl[4];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[4] * rho_ij[0];
         jvec_ij[0] += Rt[4] * rho_kl_val;
         jvec_kl[4] += jvec_kl_val;
         rho_kl_val = rho_kl[5];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[5] * rho_ij[0];
         jvec_ij[0] += Rt[5] * rho_kl_val;
         jvec_kl[5] += jvec_kl_val;
         rho_kl_val = rho_kl[6];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[6] * rho_ij[0];
         jvec_ij[0] -= Rt[6] * rho_kl_val;
         jvec_kl[6] += jvec_kl_val;
         rho_kl_val = rho_kl[7];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[7] * rho_ij[0];
         jvec_ij[0] += Rt[7] * rho_kl_val;
         jvec_kl[7] += jvec_kl_val;
         rho_kl_val = rho_kl[8];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[8] * rho_ij[0];
         jvec_ij[0] += Rt[8] * rho_kl_val;
         jvec_kl[8] += jvec_kl_val;
         rho_kl_val = rho_kl[9];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[9] * rho_ij[0];
         jvec_ij[0] += Rt[9] * rho_kl_val;
         jvec_kl[9] += jvec_kl_val;
 }
-static void Rt2jvec_2_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_2_1(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl_val += Rt[1] * rho_ij[1];
@@ -567,7 +524,7 @@ static void Rt2jvec_2_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[10] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
         rho_kl_val = rho_kl[1];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[1] * rho_ij[0];
         jvec_ij[0] -= Rt[1] * rho_kl_val;
         jvec_kl_val -= Rt[2] * rho_ij[1];
@@ -578,7 +535,7 @@ static void Rt2jvec_2_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[11] * rho_kl_val;
         jvec_kl[1] += jvec_kl_val;
         rho_kl_val = rho_kl[2];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[2] * rho_ij[0];
         jvec_ij[0] += Rt[2] * rho_kl_val;
         jvec_kl_val += Rt[3] * rho_ij[1];
@@ -589,7 +546,7 @@ static void Rt2jvec_2_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[12] * rho_kl_val;
         jvec_kl[2] += jvec_kl_val;
         rho_kl_val = rho_kl[3];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[4] * rho_ij[0];
         jvec_ij[0] -= Rt[4] * rho_kl_val;
         jvec_kl_val -= Rt[5] * rho_ij[1];
@@ -600,7 +557,7 @@ static void Rt2jvec_2_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[13] * rho_kl_val;
         jvec_kl[3] += jvec_kl_val;
         rho_kl_val = rho_kl[4];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[5] * rho_ij[0];
         jvec_ij[0] += Rt[5] * rho_kl_val;
         jvec_kl_val += Rt[6] * rho_ij[1];
@@ -611,7 +568,7 @@ static void Rt2jvec_2_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[14] * rho_kl_val;
         jvec_kl[4] += jvec_kl_val;
         rho_kl_val = rho_kl[5];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[7] * rho_ij[0];
         jvec_ij[0] += Rt[7] * rho_kl_val;
         jvec_kl_val += Rt[8] * rho_ij[1];
@@ -622,7 +579,7 @@ static void Rt2jvec_2_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[15] * rho_kl_val;
         jvec_kl[5] += jvec_kl_val;
         rho_kl_val = rho_kl[6];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[10] * rho_ij[0];
         jvec_ij[0] -= Rt[10] * rho_kl_val;
         jvec_kl_val -= Rt[11] * rho_ij[1];
@@ -633,7 +590,7 @@ static void Rt2jvec_2_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[16] * rho_kl_val;
         jvec_kl[6] += jvec_kl_val;
         rho_kl_val = rho_kl[7];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[11] * rho_ij[0];
         jvec_ij[0] += Rt[11] * rho_kl_val;
         jvec_kl_val += Rt[12] * rho_ij[1];
@@ -644,7 +601,7 @@ static void Rt2jvec_2_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[17] * rho_kl_val;
         jvec_kl[7] += jvec_kl_val;
         rho_kl_val = rho_kl[8];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[13] * rho_ij[0];
         jvec_ij[0] += Rt[13] * rho_kl_val;
         jvec_kl_val += Rt[14] * rho_ij[1];
@@ -655,7 +612,7 @@ static void Rt2jvec_2_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[18] * rho_kl_val;
         jvec_kl[8] += jvec_kl_val;
         rho_kl_val = rho_kl[9];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[16] * rho_ij[0];
         jvec_ij[0] += Rt[16] * rho_kl_val;
         jvec_kl_val += Rt[17] * rho_ij[1];
@@ -666,11 +623,11 @@ static void Rt2jvec_2_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[19] * rho_kl_val;
         jvec_kl[9] += jvec_kl_val;
 }
-static void Rt2jvec_2_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_2_2(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl_val += Rt[1] * rho_ij[1];
@@ -693,7 +650,7 @@ static void Rt2jvec_2_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[25] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
         rho_kl_val = rho_kl[1];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[1] * rho_ij[0];
         jvec_ij[0] -= Rt[1] * rho_kl_val;
         jvec_kl_val -= Rt[2] * rho_ij[1];
@@ -716,7 +673,7 @@ static void Rt2jvec_2_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[26] * rho_kl_val;
         jvec_kl[1] += jvec_kl_val;
         rho_kl_val = rho_kl[2];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[2] * rho_ij[0];
         jvec_ij[0] += Rt[2] * rho_kl_val;
         jvec_kl_val += Rt[3] * rho_ij[1];
@@ -739,7 +696,7 @@ static void Rt2jvec_2_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[27] * rho_kl_val;
         jvec_kl[2] += jvec_kl_val;
         rho_kl_val = rho_kl[3];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[5] * rho_ij[0];
         jvec_ij[0] -= Rt[5] * rho_kl_val;
         jvec_kl_val -= Rt[6] * rho_ij[1];
@@ -762,7 +719,7 @@ static void Rt2jvec_2_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[28] * rho_kl_val;
         jvec_kl[3] += jvec_kl_val;
         rho_kl_val = rho_kl[4];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[6] * rho_ij[0];
         jvec_ij[0] += Rt[6] * rho_kl_val;
         jvec_kl_val += Rt[7] * rho_ij[1];
@@ -785,7 +742,7 @@ static void Rt2jvec_2_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[29] * rho_kl_val;
         jvec_kl[4] += jvec_kl_val;
         rho_kl_val = rho_kl[5];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[9] * rho_ij[0];
         jvec_ij[0] += Rt[9] * rho_kl_val;
         jvec_kl_val += Rt[10] * rho_ij[1];
@@ -808,7 +765,7 @@ static void Rt2jvec_2_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[30] * rho_kl_val;
         jvec_kl[5] += jvec_kl_val;
         rho_kl_val = rho_kl[6];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[15] * rho_ij[0];
         jvec_ij[0] -= Rt[15] * rho_kl_val;
         jvec_kl_val -= Rt[16] * rho_ij[1];
@@ -831,7 +788,7 @@ static void Rt2jvec_2_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[31] * rho_kl_val;
         jvec_kl[6] += jvec_kl_val;
         rho_kl_val = rho_kl[7];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[16] * rho_ij[0];
         jvec_ij[0] += Rt[16] * rho_kl_val;
         jvec_kl_val += Rt[17] * rho_ij[1];
@@ -854,7 +811,7 @@ static void Rt2jvec_2_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[32] * rho_kl_val;
         jvec_kl[7] += jvec_kl_val;
         rho_kl_val = rho_kl[8];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[19] * rho_ij[0];
         jvec_ij[0] += Rt[19] * rho_kl_val;
         jvec_kl_val += Rt[20] * rho_ij[1];
@@ -877,7 +834,7 @@ static void Rt2jvec_2_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[33] * rho_kl_val;
         jvec_kl[8] += jvec_kl_val;
         rho_kl_val = rho_kl[9];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[25] * rho_ij[0];
         jvec_ij[0] += Rt[25] * rho_kl_val;
         jvec_kl_val += Rt[26] * rho_ij[1];
@@ -900,11 +857,11 @@ static void Rt2jvec_2_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[34] * rho_kl_val;
         jvec_kl[9] += jvec_kl_val;
 }
-static void Rt2jvec_2_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_2_3(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl_val += Rt[1] * rho_ij[1];
@@ -947,7 +904,7 @@ static void Rt2jvec_2_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[46] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
         rho_kl_val = rho_kl[1];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[1] * rho_ij[0];
         jvec_ij[0] -= Rt[1] * rho_kl_val;
         jvec_kl_val -= Rt[2] * rho_ij[1];
@@ -990,7 +947,7 @@ static void Rt2jvec_2_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[47] * rho_kl_val;
         jvec_kl[1] += jvec_kl_val;
         rho_kl_val = rho_kl[2];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[2] * rho_ij[0];
         jvec_ij[0] += Rt[2] * rho_kl_val;
         jvec_kl_val += Rt[3] * rho_ij[1];
@@ -1033,7 +990,7 @@ static void Rt2jvec_2_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[48] * rho_kl_val;
         jvec_kl[2] += jvec_kl_val;
         rho_kl_val = rho_kl[3];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[6] * rho_ij[0];
         jvec_ij[0] -= Rt[6] * rho_kl_val;
         jvec_kl_val -= Rt[7] * rho_ij[1];
@@ -1076,7 +1033,7 @@ static void Rt2jvec_2_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[49] * rho_kl_val;
         jvec_kl[3] += jvec_kl_val;
         rho_kl_val = rho_kl[4];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[7] * rho_ij[0];
         jvec_ij[0] += Rt[7] * rho_kl_val;
         jvec_kl_val += Rt[8] * rho_ij[1];
@@ -1119,7 +1076,7 @@ static void Rt2jvec_2_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[50] * rho_kl_val;
         jvec_kl[4] += jvec_kl_val;
         rho_kl_val = rho_kl[5];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[11] * rho_ij[0];
         jvec_ij[0] += Rt[11] * rho_kl_val;
         jvec_kl_val += Rt[12] * rho_ij[1];
@@ -1162,7 +1119,7 @@ static void Rt2jvec_2_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[51] * rho_kl_val;
         jvec_kl[5] += jvec_kl_val;
         rho_kl_val = rho_kl[6];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[21] * rho_ij[0];
         jvec_ij[0] -= Rt[21] * rho_kl_val;
         jvec_kl_val -= Rt[22] * rho_ij[1];
@@ -1205,7 +1162,7 @@ static void Rt2jvec_2_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[52] * rho_kl_val;
         jvec_kl[6] += jvec_kl_val;
         rho_kl_val = rho_kl[7];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[22] * rho_ij[0];
         jvec_ij[0] += Rt[22] * rho_kl_val;
         jvec_kl_val += Rt[23] * rho_ij[1];
@@ -1248,7 +1205,7 @@ static void Rt2jvec_2_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[53] * rho_kl_val;
         jvec_kl[7] += jvec_kl_val;
         rho_kl_val = rho_kl[8];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[26] * rho_ij[0];
         jvec_ij[0] += Rt[26] * rho_kl_val;
         jvec_kl_val += Rt[27] * rho_ij[1];
@@ -1291,7 +1248,7 @@ static void Rt2jvec_2_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[54] * rho_kl_val;
         jvec_kl[8] += jvec_kl_val;
         rho_kl_val = rho_kl[9];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[36] * rho_ij[0];
         jvec_ij[0] += Rt[36] * rho_kl_val;
         jvec_kl_val += Rt[37] * rho_ij[1];
@@ -1334,115 +1291,115 @@ static void Rt2jvec_2_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[55] * rho_kl_val;
         jvec_kl[9] += jvec_kl_val;
 }
-static void Rt2jvec_3_0(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_3_0(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
         rho_kl_val = rho_kl[1];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[1] * rho_ij[0];
         jvec_ij[0] -= Rt[1] * rho_kl_val;
         jvec_kl[1] += jvec_kl_val;
         rho_kl_val = rho_kl[2];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[2] * rho_ij[0];
         jvec_ij[0] += Rt[2] * rho_kl_val;
         jvec_kl[2] += jvec_kl_val;
         rho_kl_val = rho_kl[3];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[3] * rho_ij[0];
         jvec_ij[0] -= Rt[3] * rho_kl_val;
         jvec_kl[3] += jvec_kl_val;
         rho_kl_val = rho_kl[4];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[4] * rho_ij[0];
         jvec_ij[0] -= Rt[4] * rho_kl_val;
         jvec_kl[4] += jvec_kl_val;
         rho_kl_val = rho_kl[5];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[5] * rho_ij[0];
         jvec_ij[0] += Rt[5] * rho_kl_val;
         jvec_kl[5] += jvec_kl_val;
         rho_kl_val = rho_kl[6];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[6] * rho_ij[0];
         jvec_ij[0] -= Rt[6] * rho_kl_val;
         jvec_kl[6] += jvec_kl_val;
         rho_kl_val = rho_kl[7];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[7] * rho_ij[0];
         jvec_ij[0] += Rt[7] * rho_kl_val;
         jvec_kl[7] += jvec_kl_val;
         rho_kl_val = rho_kl[8];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[8] * rho_ij[0];
         jvec_ij[0] -= Rt[8] * rho_kl_val;
         jvec_kl[8] += jvec_kl_val;
         rho_kl_val = rho_kl[9];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[9] * rho_ij[0];
         jvec_ij[0] -= Rt[9] * rho_kl_val;
         jvec_kl[9] += jvec_kl_val;
         rho_kl_val = rho_kl[10];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[10] * rho_ij[0];
         jvec_ij[0] -= Rt[10] * rho_kl_val;
         jvec_kl[10] += jvec_kl_val;
         rho_kl_val = rho_kl[11];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[11] * rho_ij[0];
         jvec_ij[0] += Rt[11] * rho_kl_val;
         jvec_kl[11] += jvec_kl_val;
         rho_kl_val = rho_kl[12];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[12] * rho_ij[0];
         jvec_ij[0] -= Rt[12] * rho_kl_val;
         jvec_kl[12] += jvec_kl_val;
         rho_kl_val = rho_kl[13];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[13] * rho_ij[0];
         jvec_ij[0] += Rt[13] * rho_kl_val;
         jvec_kl[13] += jvec_kl_val;
         rho_kl_val = rho_kl[14];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[14] * rho_ij[0];
         jvec_ij[0] -= Rt[14] * rho_kl_val;
         jvec_kl[14] += jvec_kl_val;
         rho_kl_val = rho_kl[15];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[15] * rho_ij[0];
         jvec_ij[0] -= Rt[15] * rho_kl_val;
         jvec_kl[15] += jvec_kl_val;
         rho_kl_val = rho_kl[16];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[16] * rho_ij[0];
         jvec_ij[0] += Rt[16] * rho_kl_val;
         jvec_kl[16] += jvec_kl_val;
         rho_kl_val = rho_kl[17];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[17] * rho_ij[0];
         jvec_ij[0] -= Rt[17] * rho_kl_val;
         jvec_kl[17] += jvec_kl_val;
         rho_kl_val = rho_kl[18];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[18] * rho_ij[0];
         jvec_ij[0] -= Rt[18] * rho_kl_val;
         jvec_kl[18] += jvec_kl_val;
         rho_kl_val = rho_kl[19];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[19] * rho_ij[0];
         jvec_ij[0] -= Rt[19] * rho_kl_val;
         jvec_kl[19] += jvec_kl_val;
 }
-static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_3_1(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl_val += Rt[1] * rho_ij[1];
@@ -1453,7 +1410,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[15] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
         rho_kl_val = rho_kl[1];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[1] * rho_ij[0];
         jvec_ij[0] -= Rt[1] * rho_kl_val;
         jvec_kl_val -= Rt[2] * rho_ij[1];
@@ -1464,7 +1421,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[16] * rho_kl_val;
         jvec_kl[1] += jvec_kl_val;
         rho_kl_val = rho_kl[2];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[2] * rho_ij[0];
         jvec_ij[0] += Rt[2] * rho_kl_val;
         jvec_kl_val += Rt[3] * rho_ij[1];
@@ -1475,7 +1432,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[17] * rho_kl_val;
         jvec_kl[2] += jvec_kl_val;
         rho_kl_val = rho_kl[3];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[3] * rho_ij[0];
         jvec_ij[0] -= Rt[3] * rho_kl_val;
         jvec_kl_val -= Rt[4] * rho_ij[1];
@@ -1486,7 +1443,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[18] * rho_kl_val;
         jvec_kl[3] += jvec_kl_val;
         rho_kl_val = rho_kl[4];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[5] * rho_ij[0];
         jvec_ij[0] -= Rt[5] * rho_kl_val;
         jvec_kl_val -= Rt[6] * rho_ij[1];
@@ -1497,7 +1454,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[19] * rho_kl_val;
         jvec_kl[4] += jvec_kl_val;
         rho_kl_val = rho_kl[5];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[6] * rho_ij[0];
         jvec_ij[0] += Rt[6] * rho_kl_val;
         jvec_kl_val += Rt[7] * rho_ij[1];
@@ -1508,7 +1465,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[20] * rho_kl_val;
         jvec_kl[5] += jvec_kl_val;
         rho_kl_val = rho_kl[6];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[7] * rho_ij[0];
         jvec_ij[0] -= Rt[7] * rho_kl_val;
         jvec_kl_val -= Rt[8] * rho_ij[1];
@@ -1519,7 +1476,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[21] * rho_kl_val;
         jvec_kl[6] += jvec_kl_val;
         rho_kl_val = rho_kl[7];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[9] * rho_ij[0];
         jvec_ij[0] += Rt[9] * rho_kl_val;
         jvec_kl_val += Rt[10] * rho_ij[1];
@@ -1530,7 +1487,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[22] * rho_kl_val;
         jvec_kl[7] += jvec_kl_val;
         rho_kl_val = rho_kl[8];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[10] * rho_ij[0];
         jvec_ij[0] -= Rt[10] * rho_kl_val;
         jvec_kl_val -= Rt[11] * rho_ij[1];
@@ -1541,7 +1498,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[23] * rho_kl_val;
         jvec_kl[8] += jvec_kl_val;
         rho_kl_val = rho_kl[9];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[12] * rho_ij[0];
         jvec_ij[0] -= Rt[12] * rho_kl_val;
         jvec_kl_val -= Rt[13] * rho_ij[1];
@@ -1552,7 +1509,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[24] * rho_kl_val;
         jvec_kl[9] += jvec_kl_val;
         rho_kl_val = rho_kl[10];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[15] * rho_ij[0];
         jvec_ij[0] -= Rt[15] * rho_kl_val;
         jvec_kl_val -= Rt[16] * rho_ij[1];
@@ -1563,7 +1520,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[25] * rho_kl_val;
         jvec_kl[10] += jvec_kl_val;
         rho_kl_val = rho_kl[11];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[16] * rho_ij[0];
         jvec_ij[0] += Rt[16] * rho_kl_val;
         jvec_kl_val += Rt[17] * rho_ij[1];
@@ -1574,7 +1531,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[26] * rho_kl_val;
         jvec_kl[11] += jvec_kl_val;
         rho_kl_val = rho_kl[12];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[17] * rho_ij[0];
         jvec_ij[0] -= Rt[17] * rho_kl_val;
         jvec_kl_val -= Rt[18] * rho_ij[1];
@@ -1585,7 +1542,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[27] * rho_kl_val;
         jvec_kl[12] += jvec_kl_val;
         rho_kl_val = rho_kl[13];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[19] * rho_ij[0];
         jvec_ij[0] += Rt[19] * rho_kl_val;
         jvec_kl_val += Rt[20] * rho_ij[1];
@@ -1596,7 +1553,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[28] * rho_kl_val;
         jvec_kl[13] += jvec_kl_val;
         rho_kl_val = rho_kl[14];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[20] * rho_ij[0];
         jvec_ij[0] -= Rt[20] * rho_kl_val;
         jvec_kl_val -= Rt[21] * rho_ij[1];
@@ -1607,7 +1564,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[29] * rho_kl_val;
         jvec_kl[14] += jvec_kl_val;
         rho_kl_val = rho_kl[15];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[22] * rho_ij[0];
         jvec_ij[0] -= Rt[22] * rho_kl_val;
         jvec_kl_val -= Rt[23] * rho_ij[1];
@@ -1618,7 +1575,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[30] * rho_kl_val;
         jvec_kl[15] += jvec_kl_val;
         rho_kl_val = rho_kl[16];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[25] * rho_ij[0];
         jvec_ij[0] += Rt[25] * rho_kl_val;
         jvec_kl_val += Rt[26] * rho_ij[1];
@@ -1629,7 +1586,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] += Rt[31] * rho_kl_val;
         jvec_kl[16] += jvec_kl_val;
         rho_kl_val = rho_kl[17];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[26] * rho_ij[0];
         jvec_ij[0] -= Rt[26] * rho_kl_val;
         jvec_kl_val -= Rt[27] * rho_ij[1];
@@ -1640,7 +1597,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[32] * rho_kl_val;
         jvec_kl[17] += jvec_kl_val;
         rho_kl_val = rho_kl[18];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[28] * rho_ij[0];
         jvec_ij[0] -= Rt[28] * rho_kl_val;
         jvec_kl_val -= Rt[29] * rho_ij[1];
@@ -1651,7 +1608,7 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[33] * rho_kl_val;
         jvec_kl[18] += jvec_kl_val;
         rho_kl_val = rho_kl[19];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[31] * rho_ij[0];
         jvec_ij[0] -= Rt[31] * rho_kl_val;
         jvec_kl_val -= Rt[32] * rho_ij[1];
@@ -1662,11 +1619,11 @@ static void Rt2jvec_3_1(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[3] -= Rt[34] * rho_kl_val;
         jvec_kl[19] += jvec_kl_val;
 }
-static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_3_2(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl_val += Rt[1] * rho_ij[1];
@@ -1689,7 +1646,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[36] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
         rho_kl_val = rho_kl[1];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[1] * rho_ij[0];
         jvec_ij[0] -= Rt[1] * rho_kl_val;
         jvec_kl_val -= Rt[2] * rho_ij[1];
@@ -1712,7 +1669,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[37] * rho_kl_val;
         jvec_kl[1] += jvec_kl_val;
         rho_kl_val = rho_kl[2];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[2] * rho_ij[0];
         jvec_ij[0] += Rt[2] * rho_kl_val;
         jvec_kl_val += Rt[3] * rho_ij[1];
@@ -1735,7 +1692,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[38] * rho_kl_val;
         jvec_kl[2] += jvec_kl_val;
         rho_kl_val = rho_kl[3];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[3] * rho_ij[0];
         jvec_ij[0] -= Rt[3] * rho_kl_val;
         jvec_kl_val -= Rt[4] * rho_ij[1];
@@ -1758,7 +1715,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[39] * rho_kl_val;
         jvec_kl[3] += jvec_kl_val;
         rho_kl_val = rho_kl[4];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[6] * rho_ij[0];
         jvec_ij[0] -= Rt[6] * rho_kl_val;
         jvec_kl_val -= Rt[7] * rho_ij[1];
@@ -1781,7 +1738,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[40] * rho_kl_val;
         jvec_kl[4] += jvec_kl_val;
         rho_kl_val = rho_kl[5];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[7] * rho_ij[0];
         jvec_ij[0] += Rt[7] * rho_kl_val;
         jvec_kl_val += Rt[8] * rho_ij[1];
@@ -1804,7 +1761,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[41] * rho_kl_val;
         jvec_kl[5] += jvec_kl_val;
         rho_kl_val = rho_kl[6];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[8] * rho_ij[0];
         jvec_ij[0] -= Rt[8] * rho_kl_val;
         jvec_kl_val -= Rt[9] * rho_ij[1];
@@ -1827,7 +1784,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[42] * rho_kl_val;
         jvec_kl[6] += jvec_kl_val;
         rho_kl_val = rho_kl[7];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[11] * rho_ij[0];
         jvec_ij[0] += Rt[11] * rho_kl_val;
         jvec_kl_val += Rt[12] * rho_ij[1];
@@ -1850,7 +1807,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[43] * rho_kl_val;
         jvec_kl[7] += jvec_kl_val;
         rho_kl_val = rho_kl[8];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[12] * rho_ij[0];
         jvec_ij[0] -= Rt[12] * rho_kl_val;
         jvec_kl_val -= Rt[13] * rho_ij[1];
@@ -1873,7 +1830,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[44] * rho_kl_val;
         jvec_kl[8] += jvec_kl_val;
         rho_kl_val = rho_kl[9];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[15] * rho_ij[0];
         jvec_ij[0] -= Rt[15] * rho_kl_val;
         jvec_kl_val -= Rt[16] * rho_ij[1];
@@ -1896,7 +1853,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[45] * rho_kl_val;
         jvec_kl[9] += jvec_kl_val;
         rho_kl_val = rho_kl[10];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[21] * rho_ij[0];
         jvec_ij[0] -= Rt[21] * rho_kl_val;
         jvec_kl_val -= Rt[22] * rho_ij[1];
@@ -1919,7 +1876,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[46] * rho_kl_val;
         jvec_kl[10] += jvec_kl_val;
         rho_kl_val = rho_kl[11];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[22] * rho_ij[0];
         jvec_ij[0] += Rt[22] * rho_kl_val;
         jvec_kl_val += Rt[23] * rho_ij[1];
@@ -1942,7 +1899,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[47] * rho_kl_val;
         jvec_kl[11] += jvec_kl_val;
         rho_kl_val = rho_kl[12];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[23] * rho_ij[0];
         jvec_ij[0] -= Rt[23] * rho_kl_val;
         jvec_kl_val -= Rt[24] * rho_ij[1];
@@ -1965,7 +1922,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[48] * rho_kl_val;
         jvec_kl[12] += jvec_kl_val;
         rho_kl_val = rho_kl[13];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[26] * rho_ij[0];
         jvec_ij[0] += Rt[26] * rho_kl_val;
         jvec_kl_val += Rt[27] * rho_ij[1];
@@ -1988,7 +1945,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[49] * rho_kl_val;
         jvec_kl[13] += jvec_kl_val;
         rho_kl_val = rho_kl[14];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[27] * rho_ij[0];
         jvec_ij[0] -= Rt[27] * rho_kl_val;
         jvec_kl_val -= Rt[28] * rho_ij[1];
@@ -2011,7 +1968,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[50] * rho_kl_val;
         jvec_kl[14] += jvec_kl_val;
         rho_kl_val = rho_kl[15];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[30] * rho_ij[0];
         jvec_ij[0] -= Rt[30] * rho_kl_val;
         jvec_kl_val -= Rt[31] * rho_ij[1];
@@ -2034,7 +1991,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[51] * rho_kl_val;
         jvec_kl[15] += jvec_kl_val;
         rho_kl_val = rho_kl[16];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[36] * rho_ij[0];
         jvec_ij[0] += Rt[36] * rho_kl_val;
         jvec_kl_val += Rt[37] * rho_ij[1];
@@ -2057,7 +2014,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] += Rt[52] * rho_kl_val;
         jvec_kl[16] += jvec_kl_val;
         rho_kl_val = rho_kl[17];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[37] * rho_ij[0];
         jvec_ij[0] -= Rt[37] * rho_kl_val;
         jvec_kl_val -= Rt[38] * rho_ij[1];
@@ -2080,7 +2037,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[53] * rho_kl_val;
         jvec_kl[17] += jvec_kl_val;
         rho_kl_val = rho_kl[18];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[40] * rho_ij[0];
         jvec_ij[0] -= Rt[40] * rho_kl_val;
         jvec_kl_val -= Rt[41] * rho_ij[1];
@@ -2103,7 +2060,7 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[54] * rho_kl_val;
         jvec_kl[18] += jvec_kl_val;
         rho_kl_val = rho_kl[19];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[46] * rho_ij[0];
         jvec_ij[0] -= Rt[46] * rho_kl_val;
         jvec_kl_val -= Rt[47] * rho_ij[1];
@@ -2126,11 +2083,11 @@ static void Rt2jvec_3_2(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[9] -= Rt[55] * rho_kl_val;
         jvec_kl[19] += jvec_kl_val;
 }
-static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void Rt2jvec_3_3(__MD *Rt, __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
-        double jvec_kl_val, rho_kl_val;
+        __MD jvec_kl_val, rho_kl_val;
         rho_kl_val = rho_kl[0];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[0] * rho_ij[0];
         jvec_ij[0] += Rt[0] * rho_kl_val;
         jvec_kl_val += Rt[1] * rho_ij[1];
@@ -2173,7 +2130,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[64] * rho_kl_val;
         jvec_kl[0] += jvec_kl_val;
         rho_kl_val = rho_kl[1];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[1] * rho_ij[0];
         jvec_ij[0] -= Rt[1] * rho_kl_val;
         jvec_kl_val -= Rt[2] * rho_ij[1];
@@ -2216,7 +2173,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[65] * rho_kl_val;
         jvec_kl[1] += jvec_kl_val;
         rho_kl_val = rho_kl[2];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[2] * rho_ij[0];
         jvec_ij[0] += Rt[2] * rho_kl_val;
         jvec_kl_val += Rt[3] * rho_ij[1];
@@ -2259,7 +2216,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[66] * rho_kl_val;
         jvec_kl[2] += jvec_kl_val;
         rho_kl_val = rho_kl[3];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[3] * rho_ij[0];
         jvec_ij[0] -= Rt[3] * rho_kl_val;
         jvec_kl_val -= Rt[4] * rho_ij[1];
@@ -2302,7 +2259,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[67] * rho_kl_val;
         jvec_kl[3] += jvec_kl_val;
         rho_kl_val = rho_kl[4];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[7] * rho_ij[0];
         jvec_ij[0] -= Rt[7] * rho_kl_val;
         jvec_kl_val -= Rt[8] * rho_ij[1];
@@ -2345,7 +2302,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[68] * rho_kl_val;
         jvec_kl[4] += jvec_kl_val;
         rho_kl_val = rho_kl[5];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[8] * rho_ij[0];
         jvec_ij[0] += Rt[8] * rho_kl_val;
         jvec_kl_val += Rt[9] * rho_ij[1];
@@ -2388,7 +2345,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[69] * rho_kl_val;
         jvec_kl[5] += jvec_kl_val;
         rho_kl_val = rho_kl[6];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[9] * rho_ij[0];
         jvec_ij[0] -= Rt[9] * rho_kl_val;
         jvec_kl_val -= Rt[10] * rho_ij[1];
@@ -2431,7 +2388,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[70] * rho_kl_val;
         jvec_kl[6] += jvec_kl_val;
         rho_kl_val = rho_kl[7];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[13] * rho_ij[0];
         jvec_ij[0] += Rt[13] * rho_kl_val;
         jvec_kl_val += Rt[14] * rho_ij[1];
@@ -2474,7 +2431,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[71] * rho_kl_val;
         jvec_kl[7] += jvec_kl_val;
         rho_kl_val = rho_kl[8];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[14] * rho_ij[0];
         jvec_ij[0] -= Rt[14] * rho_kl_val;
         jvec_kl_val -= Rt[15] * rho_ij[1];
@@ -2517,7 +2474,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[72] * rho_kl_val;
         jvec_kl[8] += jvec_kl_val;
         rho_kl_val = rho_kl[9];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[18] * rho_ij[0];
         jvec_ij[0] -= Rt[18] * rho_kl_val;
         jvec_kl_val -= Rt[19] * rho_ij[1];
@@ -2560,7 +2517,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[73] * rho_kl_val;
         jvec_kl[9] += jvec_kl_val;
         rho_kl_val = rho_kl[10];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[28] * rho_ij[0];
         jvec_ij[0] -= Rt[28] * rho_kl_val;
         jvec_kl_val -= Rt[29] * rho_ij[1];
@@ -2603,7 +2560,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[74] * rho_kl_val;
         jvec_kl[10] += jvec_kl_val;
         rho_kl_val = rho_kl[11];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[29] * rho_ij[0];
         jvec_ij[0] += Rt[29] * rho_kl_val;
         jvec_kl_val += Rt[30] * rho_ij[1];
@@ -2646,7 +2603,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[75] * rho_kl_val;
         jvec_kl[11] += jvec_kl_val;
         rho_kl_val = rho_kl[12];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[30] * rho_ij[0];
         jvec_ij[0] -= Rt[30] * rho_kl_val;
         jvec_kl_val -= Rt[31] * rho_ij[1];
@@ -2689,7 +2646,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[76] * rho_kl_val;
         jvec_kl[12] += jvec_kl_val;
         rho_kl_val = rho_kl[13];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[34] * rho_ij[0];
         jvec_ij[0] += Rt[34] * rho_kl_val;
         jvec_kl_val += Rt[35] * rho_ij[1];
@@ -2732,7 +2689,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[77] * rho_kl_val;
         jvec_kl[13] += jvec_kl_val;
         rho_kl_val = rho_kl[14];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[35] * rho_ij[0];
         jvec_ij[0] -= Rt[35] * rho_kl_val;
         jvec_kl_val -= Rt[36] * rho_ij[1];
@@ -2775,7 +2732,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[78] * rho_kl_val;
         jvec_kl[14] += jvec_kl_val;
         rho_kl_val = rho_kl[15];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[39] * rho_ij[0];
         jvec_ij[0] -= Rt[39] * rho_kl_val;
         jvec_kl_val -= Rt[40] * rho_ij[1];
@@ -2818,7 +2775,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[79] * rho_kl_val;
         jvec_kl[15] += jvec_kl_val;
         rho_kl_val = rho_kl[16];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val += Rt[49] * rho_ij[0];
         jvec_ij[0] += Rt[49] * rho_kl_val;
         jvec_kl_val += Rt[50] * rho_ij[1];
@@ -2861,7 +2818,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] += Rt[80] * rho_kl_val;
         jvec_kl[16] += jvec_kl_val;
         rho_kl_val = rho_kl[17];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[50] * rho_ij[0];
         jvec_ij[0] -= Rt[50] * rho_kl_val;
         jvec_kl_val -= Rt[51] * rho_ij[1];
@@ -2904,7 +2861,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[81] * rho_kl_val;
         jvec_kl[17] += jvec_kl_val;
         rho_kl_val = rho_kl[18];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[54] * rho_ij[0];
         jvec_ij[0] -= Rt[54] * rho_kl_val;
         jvec_kl_val -= Rt[55] * rho_ij[1];
@@ -2947,7 +2904,7 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_ij[19] -= Rt[82] * rho_kl_val;
         jvec_kl[18] += jvec_kl_val;
         rho_kl_val = rho_kl[19];
-        jvec_kl_val = 0.;
+        jvec_kl_val = MM_SET0();
         jvec_kl_val -= Rt[64] * rho_ij[0];
         jvec_ij[0] -= Rt[64] * rho_kl_val;
         jvec_kl_val -= Rt[65] * rho_ij[1];
@@ -2991,12 +2948,12 @@ static void Rt2jvec_3_3(double *Rt, double *rho_ij, double *rho_kl, double *jvec
         jvec_kl[19] += jvec_kl_val;
 }
 
-static void _jvec_wo_Rt(double *Rt, int l1, int l2, int len2,
-                        double a, double fac, double *rpq, double *buf,
-                        double *rho_ij, double *rho_kl, double *jvec_ij, double *jvec_kl)
+static void _jvec_wo_Rt(__MD *Rt, int l1, int l2, int len2,
+                        __MD a, __MD fac, __MD *rpq, __MD *buf,
+                        __MD *rho_ij, __MD *rho_kl, __MD *jvec_ij, __MD *jvec_kl)
 {
         int l = l1 + l2;
-        get_R_tensor(Rt, l, a, fac, rpq, buf);
+        get_R_tensor_simd(Rt, l, a, fac, rpq, buf);
         switch (l1*LMAX*2+l2) {
         case (0*LMAX*2+0): return Rt2jvec_0_0(Rt, rho_ij, rho_kl, jvec_ij, jvec_kl);
         case (0*LMAX*2+1): return Rt2jvec_0_1(Rt, rho_ij, rho_kl, jvec_ij, jvec_kl);
@@ -3016,10 +2973,10 @@ static void _jvec_wo_Rt(double *Rt, int l1, int l2, int len2,
         case (3*LMAX*2+3): return Rt2jvec_3_3(Rt, rho_ij, rho_kl, jvec_ij, jvec_kl);
         }
 
-        double s;
+        __MD s;
         if (l1 == 0) {
-                double rho_kl_val = rho_kl[0];
-                double jvec_kl_val = 0.;
+                __MD rho_kl_val = rho_kl[0];
+                __MD jvec_kl_val = MM_SET0();
                 for (int i = 0; i < len2; i++) {
                         s = Rt[i];
                         jvec_kl_val += s * rho_ij[i];
@@ -3048,7 +3005,7 @@ static void _jvec_wo_Rt(double *Rt, int l1, int l2, int len2,
 
         int stride_l = (l+1);
         int stride_ll = stride_l * (l+1);
-        double *Rsub;
+        __MD *Rsub;
         for (n = 0, t = 0; t <= l; t++) {
                 Rsub = buf + t*stride_ll;
                 for (u = 0; u <= l-t; u++) {
@@ -3061,8 +3018,8 @@ static void _jvec_wo_Rt(double *Rt, int l1, int l2, int len2,
         for (k = 0, e = 0; e <= l1; e++) {
         for (f = 0; f <= l1-e; f++) {
         for (g = 0; g <= l1-e-f; g++, k++) {
-                double rho_kl_val = rho_kl[k];
-                double jvec_kl_val = 0.;
+                __MD rho_kl_val = rho_kl[k];
+                __MD jvec_kl_val = MM_SET0();
                 if ((e + f + g) % 2 == 0) {
                         for (i = 0, t = 0; t <= l2; t++) {
                                 Rsub = buf + (e+t)*stride_ll + f*stride_l + g;
@@ -3091,8 +3048,7 @@ static void _jvec_wo_Rt(double *Rt, int l1, int l2, int len2,
         return;
 }
 
-void MD_jk_kernel(MDIntEnvVars *envs, JKMatrix *jk,
-                  int ish, int jsh, int ksh, int lsh, double *buf)
+void MD_jk_kernel_simd(MDIntEnvVars *envs, JKMatrix *jk, int *shl_quartets, __MD *buf)
 {
         int nbas = envs->nbas;
         int *bas = envs->bas;
@@ -3109,6 +3065,10 @@ void MD_jk_kernel(MDIntEnvVars *envs, JKMatrix *jk,
         char T = 'T';
         double D0 = 0.;
         double D1 = 1.;
+        int ish = shl_quartets[0];
+        int jsh = shl_quartets[1];
+        int ksh = shl_quartets[2];
+        int lsh = shl_quartets[3];
         int li = bas[ish*BAS_SLOTS+ANG_OF];
         int lj = bas[jsh*BAS_SLOTS+ANG_OF];
         int lk = bas[ksh*BAS_SLOTS+ANG_OF];
@@ -3126,94 +3086,206 @@ void MD_jk_kernel(MDIntEnvVars *envs, JKMatrix *jk,
         int dl = ao_loc[lsh+1] - ao_loc[lsh];
         int didj = di * dj;
         int dkdl = dk * dl;
+        int d4 = didj * dkdl;
         int Et_ij_len = (lij + 1) * (lij + 2) * (lij + 3) / 6;
         int Et_kl_len = (lkl + 1) * (lkl + 2) * (lkl + 3) / 6;
+        int Et_ij_lenp = Et_ij_len * iprim * jprim;
         int Et_kl_lenp = Et_kl_len * kprim * lprim;
-        double *Rt2 = buf + Et_ij_len*Et_kl_len + (l4+1)*(l4+1)*(l4+1);
-        double *eri = Rt2 + Et_ij_len * Et_kl_lenp;
-        double *RdotE = eri + didj * dkdl;
-        double Rpq[3];
+        int Et_ij_len8 = Et_ij_len * SIMDD;
 
-        int bas_ij = ish * nbas + jsh;
-        int bas_kl = ksh * nbas + lsh;
-        // FIXME: the non-symmetric density matrices
-        double fac_sym = PI_FAC;
-        if (ish == jsh) fac_sym *= .5;
-        if (ksh == lsh) fac_sym *= .5;
-        if (bas_ij == bas_kl) fac_sym *= .5;
+        __MD expi[32];
+        __MD expj[32];
+        __MD expk[32];
+        __MD expl[32];
+        double *pexpi = (double *)&expi;
+        double *pexpj = (double *)&expj;
+        double *pexpk = (double *)&expk;
+        double *pexpl = (double *)&expl;
+        ALIGNMM double fac_sym[SIMDD];
+        int _idx_ij[SIMDD];
+        int _idx_kl[SIMDD];
+        int _idx_ri[SIMDD];
+        int _idx_rj[SIMDD];
+        int _idx_rk[SIMDD];
+        int _idx_rl[SIMDD];
+        int _idx_Et_ij[SIMDD];
+        int _idx_Et_kl[SIMDD];
+        for (int n = 0; n < SIMDD; n++) {
+                int ish = shl_quartets[n*4+0];
+                int jsh = shl_quartets[n*4+1];
+                int ksh = shl_quartets[n*4+2];
+                int lsh = shl_quartets[n*4+3];
+                int bas_ij = ish * nbas + jsh;
+                int bas_kl = ksh * nbas + lsh;
+                fac_sym[n] = 1.;
+                if (ish == jsh) fac_sym[n] *= .5;
+                if (ksh == lsh) fac_sym[n] *= .5;
+                if (bas_ij == bas_kl) fac_sym[n] *= .5;
 
-        double *Et_ij = Et_ij_cache + Et_offsets[bas_ij];
-        double *Et_kl = Et_kl_cache + Et_offsets[bas_kl];
-        double *expi = env + bas[ish*BAS_SLOTS+PTR_EXP];
-        double *expj = env + bas[jsh*BAS_SLOTS+PTR_EXP];
-        double *expk = env + bas[ksh*BAS_SLOTS+PTR_EXP];
-        double *expl = env + bas[lsh*BAS_SLOTS+PTR_EXP];
-        double *ri = env + bas[ish*BAS_SLOTS+PTR_BAS_COORD];
-        double *rj = env + bas[jsh*BAS_SLOTS+PTR_BAS_COORD];
-        double *rk = env + bas[ksh*BAS_SLOTS+PTR_BAS_COORD];
-        double *rl = env + bas[lsh*BAS_SLOTS+PTR_BAS_COORD];
-        double xixj = ri[0] - rj[0];
-        double yiyj = ri[1] - rj[1];
-        double zizj = ri[2] - rj[2];
-        double xkxl = rk[0] - rl[0];
-        double ykyl = rk[1] - rl[1];
-        double zkzl = rk[2] - rl[2];
-        double *rho_ij = Et_dm + jengine_loc[bas_ij];
-        double *rho_kl = Et_dm + jengine_loc[bas_kl];
-        double *jvec_ij = vj + jengine_loc[bas_ij];
-        double *jvec_kl = vj + jengine_loc[bas_kl];
+                _idx_Et_ij[n] = Et_offsets[bas_ij];
+                _idx_Et_kl[n] = Et_offsets[bas_kl];
+                double *_expi = env + bas[ish*BAS_SLOTS+PTR_EXP];
+                double *_expj = env + bas[jsh*BAS_SLOTS+PTR_EXP];
+                double *_expk = env + bas[ksh*BAS_SLOTS+PTR_EXP];
+                double *_expl = env + bas[lsh*BAS_SLOTS+PTR_EXP];
+                for (int ip = 0; ip < iprim; ip++) { pexpi[ip*SIMDD+n] = _expi[ip]; }
+                for (int jp = 0; jp < jprim; jp++) { pexpj[jp*SIMDD+n] = _expj[jp]; }
+                for (int kp = 0; kp < kprim; kp++) { pexpk[kp*SIMDD+n] = _expk[kp]; }
+                for (int lp = 0; lp < lprim; lp++) { pexpl[lp*SIMDD+n] = _expl[lp]; }
+                _idx_ri[n] = bas[ish*BAS_SLOTS+PTR_BAS_COORD];
+                _idx_rj[n] = bas[jsh*BAS_SLOTS+PTR_BAS_COORD];
+                _idx_rk[n] = bas[ksh*BAS_SLOTS+PTR_BAS_COORD];
+                _idx_rl[n] = bas[lsh*BAS_SLOTS+PTR_BAS_COORD];
+                _idx_ij[n] = jengine_loc[bas_ij];
+                _idx_kl[n] = jengine_loc[bas_kl];
+        }
+        __MD _fac_sym = MM_SET1(PI_FAC) * MM_LOAD(fac_sym);
+#if (SIMDD == 8)
+        __m256i idx_ri = _mm256_set_epi32(_idx_ri[7], _idx_ri[6], _idx_ri[5], _idx_ri[4], _idx_ri[3], _idx_ri[2], _idx_ri[1], _idx_ri[0]);
+        __m256i idx_rj = _mm256_set_epi32(_idx_rj[7], _idx_rj[6], _idx_rj[5], _idx_rj[4], _idx_rj[3], _idx_rj[2], _idx_rj[1], _idx_rj[0]);
+        __m256i idx_rk = _mm256_set_epi32(_idx_rk[7], _idx_rk[6], _idx_rk[5], _idx_rk[4], _idx_rk[3], _idx_rk[2], _idx_rk[1], _idx_rk[0]);
+        __m256i idx_rl = _mm256_set_epi32(_idx_rl[7], _idx_rl[6], _idx_rl[5], _idx_rl[4], _idx_rl[3], _idx_rl[2], _idx_rl[1], _idx_rl[0]);
+#else
+        __m128i idx_ri = _mm_set_epi32(_idx_ri[3], _idx_ri[2], _idx_ri[1], _idx_ri[0]);
+        __m128i idx_rj = _mm_set_epi32(_idx_rj[3], _idx_rj[2], _idx_rj[1], _idx_rj[0]);
+        __m128i idx_rk = _mm_set_epi32(_idx_rk[3], _idx_rk[2], _idx_rk[1], _idx_rk[0]);
+        __m128i idx_rl = _mm_set_epi32(_idx_rl[3], _idx_rl[2], _idx_rl[1], _idx_rl[0]);
+#endif
+        __MD ri[3];
+        __MD rj[3];
+        __MD rk[3];
+        __MD rl[3];
+        for (int m = 0; m < 3; m++) {
+                ri[m] = MM_GATHER(env+m, idx_ri, sizeof(double));
+                rj[m] = MM_GATHER(env+m, idx_rj, sizeof(double));
+                rk[m] = MM_GATHER(env+m, idx_rk, sizeof(double));
+                rl[m] = MM_GATHER(env+m, idx_rl, sizeof(double));
+        }
+        __MD xixj = ri[0] - rj[0];
+        __MD yiyj = ri[1] - rj[1];
+        __MD zizj = ri[2] - rj[2];
+        __MD xkxl = rk[0] - rl[0];
+        __MD ykyl = rk[1] - rl[1];
+        __MD zkzl = rk[2] - rl[2];
+        __MD ai, aj, ak, al;
+        __MI32 idx_ij, idx_kl, idx_Rt2;
 
+        __MD *_jvec_ij = buf + (Et_ij_len*Et_kl_len + (l4+1)*(l4+1)*(l4+1));
+        __MD *_rho_ij = _jvec_ij + Et_ij_lenp;
+        __MD *_jvec_kl = _rho_ij + Et_ij_lenp;
+        __MD *_rho_kl = _jvec_kl + Et_kl_lenp;
+        __MD *Rt2 = _rho_kl + Et_kl_lenp;
+        double *_dble_Rt2 = (double *)Rt2;
+        double *eri = _dble_Rt2 + Et_ij_len * Et_kl_lenp * SIMDD;
+        double *RdotE = eri + didj * dkdl * SIMDD;
+        if (vk == NULL) {
+#if (SIMDD == 8)
+                //__m256i idx_ij = _mm256_set_epi32(_idx_ij[0], _idx_ij[1], _idx_ij[2], _idx_ij[3], _idx_ij[4], _idx_ij[5], _idx_ij[6], _idx_ij[7]);
+                //__m256i idx_kl = _mm256_set_epi32(_idx_kl[0], _idx_kl[1], _idx_kl[2], _idx_kl[3], _idx_kl[4], _idx_kl[5], _idx_kl[6], _idx_kl[7]);
+                idx_ij = _mm256_set_epi32(_idx_ij[7], _idx_ij[6], _idx_ij[5], _idx_ij[4], _idx_ij[3], _idx_ij[2], _idx_ij[1], _idx_ij[0]);
+                idx_kl = _mm256_set_epi32(_idx_kl[7], _idx_kl[6], _idx_kl[5], _idx_kl[4], _idx_kl[3], _idx_kl[2], _idx_kl[1], _idx_kl[0]);
+#else
+                //__m128i idx_ij = _mm_set_epi32(_idx_ij[0], _idx_ij[1], _idx_ij[2], _idx_ij[3]);
+                //__m128i idx_kl = _mm_set_epi32(_idx_kl[0], _idx_kl[1], _idx_kl[2], _idx_kl[3]);
+                idx_ij = _mm_set_epi32(_idx_ij[3], _idx_ij[2], _idx_ij[1], _idx_ij[0]);
+                idx_kl = _mm_set_epi32(_idx_kl[3], _idx_kl[2], _idx_kl[1], _idx_kl[0]);
+#endif
+                __MD zero = MM_SET0();
+                for (int n = 0; n < Et_ij_lenp; n++) {
+                        _jvec_ij[n] = zero;
+                        _rho_ij[n] = MM_GATHER(Et_dm+n, idx_ij, sizeof(double));
+                }
+                for (int n = 0; n < Et_kl_lenp; n++) {
+                        _jvec_kl[n] = zero;
+                        _rho_kl[n] = MM_GATHER(Et_dm+n, idx_kl, sizeof(double));
+                }
+        } else {
+#if (SIMDD == 8)
+                idx_Rt2 = _mm256_set_epi32(Et_ij_len*7, Et_ij_len*6, Et_ij_len*5, Et_ij_len*4, Et_ij_len*3, Et_ij_len*2, Et_ij_len, 0);
+#else
+                idx_Rt2 = _mm_set_epi32(Et_ij_len*3, Et_ij_len*2, Et_ij_len, 0);
+#endif
+        }
+
+        __MD Rpq[3];
         for (int ij = 0, ip = 0; ip < iprim; ip++) {
         for (int jp = 0; jp < jprim; jp++, ij++) {
-                double ai = expi[ip];
-                double aj = expj[jp];
-                double aij = ai + aj;
-                double aj_aij = aj / aij;
-                double xij = ri[0] - xixj * aj_aij;
-                double yij = ri[1] - yiyj * aj_aij;
-                double zij = ri[2] - zizj * aj_aij;
-                double *pRt2 = Rt2;
-                double *rhop_ij = rho_ij + ij * Et_ij_len;
-                double *jvecp_ij = jvec_ij + ij * Et_ij_len;
+                ai = expi[ip];
+                aj = expj[jp];
+                __MD aij = ai + aj;
+                __MD aj_aij = aj / aij;
+                __MD xij = ri[0] - xixj * aj_aij;
+                __MD yij = ri[1] - yiyj * aj_aij;
+                __MD zij = ri[2] - zizj * aj_aij;
+                double *pRt2 = _dble_Rt2;
+                __MD *rhop_ij = _rho_ij + ij * Et_ij_len;
+                __MD *jvecp_ij = _jvec_ij + ij * Et_ij_len;
                 for (int kl = 0, kp = 0; kp < kprim; kp++) {
                 for (int lp = 0; lp < lprim; lp++, kl++) {
-                        double ak = expk[kp];
-                        double al = expl[lp];
-                        double akl = ak + al;
-                        double al_akl = al / akl;
-                        double xkl = rk[0] - xkxl * al_akl;
-                        double ykl = rk[1] - ykyl * al_akl;
-                        double zkl = rk[2] - zkzl * al_akl;
-                        double theta = aij * akl / (aij + akl);
-                        double fac = fac_sym / (aij*akl*sqrt(aij+akl));
+                        ak = expk[kp];
+                        al = expl[lp];
+                        __MD akl = ak + al;
+                        __MD al_akl = al / akl;
+                        __MD xkl = rk[0] - xkxl * al_akl;
+                        __MD ykl = rk[1] - ykyl * al_akl;
+                        __MD zkl = rk[2] - zkzl * al_akl;
+                        __MD theta = aij * akl / (aij + akl);
+                        __MD fac = _fac_sym / (aij*akl*MM_SQRT(aij+akl));
                         Rpq[0] = xij - xkl;
                         Rpq[1] = yij - ykl;
                         Rpq[2] = zij - zkl;
 
                         if (vk == NULL) {
+                                __MD *rhop_kl = _rho_kl + kl * Et_kl_len;
+                                __MD *jvecp_kl = _jvec_kl + kl * Et_kl_len;
                                 _jvec_wo_Rt(Rt2, lkl, lij, Et_ij_len, theta, fac, Rpq, buf,
-                                            rhop_ij, rho_kl+kl*Et_kl_len,
-                                            jvecp_ij, jvec_kl+kl*Et_kl_len);
+                                            rhop_ij, rhop_kl, jvecp_ij, jvecp_kl);
                         } else {
-                                get_Rt2(pRt2, lkl, lij, theta, fac, Rpq, buf);
-                                pRt2 += Et_ij_len * Et_kl_len;
+                                get_Rt2_simd(pRt2, lkl, lij, theta, fac, Rpq, buf,
+                                             idx_Rt2, Et_ij_len8);
+                                pRt2 += Et_ij_len * Et_kl_len * SIMDD;
                         }
                 } }
 
                 if (vk == NULL) continue;
                 // RdotE = Rt2.T.dot(Et_kl)
-                dgemm_(&N, &T, &dkdl, &Et_ij_len, &Et_kl_lenp, &D1, Et_kl, &dkdl,
-                       Rt2, &Et_ij_len, &D0, RdotE, &dkdl);
-                // Et_kl.T.dot(RdotE)
-                if (ij == 0) {
-                        dgemm_(&N, &T, &dkdl, &didj, &Et_ij_len, &D1, RdotE, &dkdl,
-                               Et_ij+ij*didj*Et_ij_len, &didj, &D0, eri, &dkdl);
-                } else {
-                        dgemm_(&N, &T, &dkdl, &didj, &Et_ij_len, &D1, RdotE, &dkdl,
-                               Et_ij+ij*didj*Et_ij_len, &didj, &D1, eri, &dkdl);
+                for (int k = 0; k < SIMDD; k++) {
+                        dgemm_(&N, &T, &dkdl, &Et_ij_len, &Et_kl_lenp,
+                               &D1, Et_kl_cache+_idx_Et_kl[k], &dkdl,
+                               _dble_Rt2+k*Et_ij_len, &Et_ij_len8, &D0, RdotE, &dkdl);
+                        // Et_kl.T.dot(RdotE)
+                        if (ij == 0) {
+                                dgemm_(&N, &T, &dkdl, &didj, &Et_ij_len, &D1, RdotE, &dkdl,
+                                       Et_ij_cache+_idx_Et_ij[k]+ij*didj*Et_ij_len, &didj,
+                                       &D0, eri+k*d4, &dkdl);
+                        } else {
+                                dgemm_(&N, &T, &dkdl, &didj, &Et_ij_len, &D1, RdotE, &dkdl,
+                                       Et_ij_cache+_idx_Et_ij[k]+ij*didj*Et_ij_len, &didj,
+                                       &D1, eri+k*d4, &dkdl);
+                        }
                 }
         } }
-        if (vk != NULL) {
-                _contract_jk_s4(jk, eri, ish, jsh, ksh, lsh, ao_loc);
+
+        if (vk == NULL) {
+                double *jvec_ij = (double *)_jvec_ij;
+                double *jvec_kl = (double *)_jvec_kl;
+                for (int k = 0; k < SIMDD; k++) {
+                        double *jvecp_ij = vj + _idx_ij[k];
+                        for (int n = 0; n < Et_ij_lenp; n++) {
+                                jvecp_ij[n] += jvec_ij[n*SIMDD+k];
+                        }
+                        double *jvecp_kl = vj + _idx_kl[k];
+                        for (int n = 0; n < Et_kl_lenp; n++) {
+                                jvecp_kl[n] += jvec_kl[n*SIMDD+k];
+                        }
+                }
+        } else {
+                for (int k = 0; k < SIMDD; k++) {
+                        int ish = shl_quartets[k*4+0];
+                        int jsh = shl_quartets[k*4+1];
+                        int ksh = shl_quartets[k*4+2];
+                        int lsh = shl_quartets[k*4+3];
+                        _contract_jk_s4(jk, eri+k*d4, ish, jsh, ksh, lsh, ao_loc);
+                }
         }
 }

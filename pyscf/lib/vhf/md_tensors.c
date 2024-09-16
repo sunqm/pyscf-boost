@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <math.h>
+#include "simd.h"
 #include "vhf.h"
 
 void eval_boys(double *Rt, int l, double a, double fac, double *rpq);
@@ -119,25 +120,19 @@ static int Rt_idx[] = {
 };
 
 // l*(l+1)*(l+2)*(l+3)//24 - l
-int Rt_idx_offsets[] = {
+static int Rt_idx_offsets[] = {
 0,0,3,12,31,65,120,203,322,486,705,990,1353,1807
 };
 
-static void iter_Rt_1(double *out, double *Rt, double *rpq)
+static void iter_Rt_1(double *out, double *Rt, double rx, double ry, double rz)
 {
-        double rx = rpq[0];
-        double ry = rpq[1];
-        double rz = rpq[2];
         out[1] = rz * Rt[0];
         out[2] = ry * Rt[0];
         out[3] = rx * Rt[0];
 }
 
-static void iter_Rt_2(double *out, double *Rt, double *rpq)
+static void iter_Rt_2(double *out, double *Rt, double rx, double ry, double rz)
 {
-        double rx = rpq[0];
-        double ry = rpq[1];
-        double rz = rpq[2];
         out[1] = rz * Rt[0];
         out[2] = rz * Rt[1] + Rt[0];
         out[3] = ry * Rt[0];
@@ -149,11 +144,8 @@ static void iter_Rt_2(double *out, double *Rt, double *rpq)
         out[9] = rx * Rt[3] + Rt[0];
 }
 
-static void iter_Rt_3(double *out, double *Rt, double *rpq)
+static void iter_Rt_3(double *out, double *Rt, double rx, double ry, double rz)
 {
-        double rx = rpq[0];
-        double ry = rpq[1];
-        double rz = rpq[2];
         out[1] = rz * Rt[0];
         out[2] = rz * Rt[1] + Rt[0];
         out[3] = rz * Rt[2] + 2 * Rt[1];
@@ -175,11 +167,8 @@ static void iter_Rt_3(double *out, double *Rt, double *rpq)
         out[19] = rx * Rt[9] + 2 * Rt[6];
 }
 
-static void iter_Rt_4(double *out, double *Rt, double *rpq)
+static void iter_Rt_4(double *out, double *Rt, double rx, double ry, double rz)
 {
-        double rx = rpq[0];
-        double ry = rpq[1];
-        double rz = rpq[2];
         out[1] = rz * Rt[0];
         out[2] = rz * Rt[1] + Rt[0];
         out[3] = rz * Rt[2] + 2 * Rt[1];
@@ -216,11 +205,8 @@ static void iter_Rt_4(double *out, double *Rt, double *rpq)
         out[34] = rx * Rt[19] + 3 * Rt[16];
 }
 
-static void iter_Rt_5(double *out, double *Rt, double *rpq)
+static void iter_Rt_5(double *out, double *Rt, double rx, double ry, double rz)
 {
-        double rx = rpq[0];
-        double ry = rpq[1];
-        double rz = rpq[2];
         out[1] = rz * Rt[0];
         out[2] = rz * Rt[1] + Rt[0];
         out[3] = rz * Rt[2] + 2 * Rt[1];
@@ -278,11 +264,8 @@ static void iter_Rt_5(double *out, double *Rt, double *rpq)
         out[55] = rx * Rt[34] + 4 * Rt[31];
 }
 
-static void iter_Rt_6(double *out, double *Rt, double *rpq)
+static void iter_Rt_6(double *out, double *Rt, double rx, double ry, double rz)
 {
-        double rx = rpq[0];
-        double ry = rpq[1];
-        double rz = rpq[2];
         out[1] = rz * Rt[0];
         out[2] = rz * Rt[1] + Rt[0];
         out[3] = rz * Rt[2] + 2 * Rt[1];
@@ -368,11 +351,8 @@ static void iter_Rt_6(double *out, double *Rt, double *rpq)
         out[83] = rx * Rt[55] + 5 * Rt[52];
 }
 
-static void iter_Rt_n(double *out, double *Rt, double *rpq, int l)
+static void iter_Rt_n(double *out, double *Rt, double rx, double ry, double rz, int l)
 {
-        double rx = rpq[0];
-        double ry = rpq[1];
-        double rz = rpq[2];
         out++;
         int *p1 = Rt_idx + Rt_idx_offsets[l];
         int t, u, v, i, k;
@@ -410,11 +390,8 @@ static void iter_Rt_n(double *out, double *Rt, double *rpq, int l)
         (lll1 - ((l)-(t)+1)*((l)-(t)+2)*((l)-(t)+3)/6 + \
          ((l)-(t)+1)*((l)-(t)+2)/2 - ((l)-(t)-(u)+1)*((l)-(t)-(u)+2)/2 + (v))
 
-static void iter_Rt_iter(double *out, double *Rt, double *rpq, int l)
+static void iter_Rt_iter(double *out, double *Rt, double rx, double ry, double rz, int l)
 {
-        double rx = rpq[0];
-        double ry = rpq[1];
-        double rz = rpq[2];
         int l1 = l - 1;
         int lll1 = (l1+1)*(l1+2)*(l1+3)/6;
         out++;
@@ -464,9 +441,12 @@ int get_R_tensor(double *Rt, int l, double a, double fac, double *rpq, double *b
 
         double boys[LSUM_MAX+1];
         eval_boys(boys, l, a, fac, rpq);
+        double rx = rpq[0];
+        double ry = rpq[1];
+        double rz = rpq[2];
         if (l == 1) {
                 Rt[0] = boys[0];
-                iter_Rt_1(Rt, boys+1, rpq);
+                iter_Rt_1(Rt, boys+1, rx, ry, rz);
                 return 0;
         }
 
@@ -481,17 +461,17 @@ int get_R_tensor(double *Rt, int l, double a, double fac, double *rpq, double *b
         for (int n = 1; n <= l; n++) {
                 Rt[0] = boys[l-n];
                 switch (n) {
-                case 1: iter_Rt_1(Rt, buf, rpq); break;
-                case 2: iter_Rt_2(Rt, buf, rpq); break;
-                case 3: iter_Rt_3(Rt, buf, rpq); break;
-                case 4: iter_Rt_4(Rt, buf, rpq); break;
-                case 5: iter_Rt_5(Rt, buf, rpq); break;
-                case 6: iter_Rt_6(Rt, buf, rpq); break;
+                case 1: iter_Rt_1(Rt, buf, rx, ry, rz); break;
+                case 2: iter_Rt_2(Rt, buf, rx, ry, rz); break;
+                case 3: iter_Rt_3(Rt, buf, rx, ry, rz); break;
+                case 4: iter_Rt_4(Rt, buf, rx, ry, rz); break;
+                case 5: iter_Rt_5(Rt, buf, rx, ry, rz); break;
+                case 6: iter_Rt_6(Rt, buf, rx, ry, rz); break;
                 default:
                         if (n <= RTIDX_MAX) {
-                                iter_Rt_n(Rt, buf, rpq, n);
+                                iter_Rt_n(Rt, buf, rx, ry, rz, n);
                         } else {
-                                iter_Rt_iter(Rt, buf, rpq, n);
+                                iter_Rt_iter(Rt, buf, rx, ry, rz, n);
                         }
                 }
                 // swap input and output
@@ -1823,32 +1803,32 @@ int get_Rt2(double *Rt2, int l1, int l2, double a, double fac, double *rpq,
 }
 */
 
-int get_Rt2(double *Rt2, int l1, int l2, double a, double fac, double *rpq,
-            double *buf)
+void get_Rt2(double *Rt2, int l1, int l2, double a, double fac, double *rpq,
+             double *buf)
 {
         switch (l1*LMAX*2+l2) {
-        case (0*LMAX*2+0): Rt2_0_0(Rt2, a, fac, rpq, buf); return 0;
-        case (0*LMAX*2+1): Rt2_0_1(Rt2, a, fac, rpq, buf); return 0;
-        case (0*LMAX*2+2): Rt2_0_2(Rt2, a, fac, rpq, buf); return 0;
-        case (0*LMAX*2+3): Rt2_0_3(Rt2, a, fac, rpq, buf); return 0;
-        case (1*LMAX*2+0): Rt2_1_0(Rt2, a, fac, rpq, buf); return 0;
-        case (1*LMAX*2+1): Rt2_1_1(Rt2, a, fac, rpq, buf); return 0;
-        case (1*LMAX*2+2): Rt2_1_2(Rt2, a, fac, rpq, buf); return 0;
-        case (1*LMAX*2+3): Rt2_1_3(Rt2, a, fac, rpq, buf); return 0;
-        case (2*LMAX*2+0): Rt2_2_0(Rt2, a, fac, rpq, buf); return 0;
-        case (2*LMAX*2+1): Rt2_2_1(Rt2, a, fac, rpq, buf); return 0;
-        case (2*LMAX*2+2): Rt2_2_2(Rt2, a, fac, rpq, buf); return 0;
-        case (2*LMAX*2+3): Rt2_2_3(Rt2, a, fac, rpq, buf); return 0;
-        case (3*LMAX*2+0): Rt2_3_0(Rt2, a, fac, rpq, buf); return 0;
-        case (3*LMAX*2+1): Rt2_3_1(Rt2, a, fac, rpq, buf); return 0;
-        case (3*LMAX*2+2): Rt2_3_2(Rt2, a, fac, rpq, buf); return 0;
-        case (3*LMAX*2+3): Rt2_3_3(Rt2, a, fac, rpq, buf); return 0;
+        case (0*LMAX*2+0): return Rt2_0_0(Rt2, a, fac, rpq, buf);
+        case (0*LMAX*2+1): return Rt2_0_1(Rt2, a, fac, rpq, buf);
+        case (0*LMAX*2+2): return Rt2_0_2(Rt2, a, fac, rpq, buf);
+        case (0*LMAX*2+3): return Rt2_0_3(Rt2, a, fac, rpq, buf);
+        case (1*LMAX*2+0): return Rt2_1_0(Rt2, a, fac, rpq, buf);
+        case (1*LMAX*2+1): return Rt2_1_1(Rt2, a, fac, rpq, buf);
+        case (1*LMAX*2+2): return Rt2_1_2(Rt2, a, fac, rpq, buf);
+        case (1*LMAX*2+3): return Rt2_1_3(Rt2, a, fac, rpq, buf);
+        case (2*LMAX*2+0): return Rt2_2_0(Rt2, a, fac, rpq, buf);
+        case (2*LMAX*2+1): return Rt2_2_1(Rt2, a, fac, rpq, buf);
+        case (2*LMAX*2+2): return Rt2_2_2(Rt2, a, fac, rpq, buf);
+        case (2*LMAX*2+3): return Rt2_2_3(Rt2, a, fac, rpq, buf);
+        case (3*LMAX*2+0): return Rt2_3_0(Rt2, a, fac, rpq, buf);
+        case (3*LMAX*2+1): return Rt2_3_1(Rt2, a, fac, rpq, buf);
+        case (3*LMAX*2+2): return Rt2_3_2(Rt2, a, fac, rpq, buf);
+        case (3*LMAX*2+3): return Rt2_3_3(Rt2, a, fac, rpq, buf);
         }
 
         int l = l1 + l2;
-        int info = get_R_tensor(Rt2, l, a, fac, rpq, buf);
+        get_R_tensor(Rt2, l, a, fac, rpq, buf);
         if (l1 == 0) {
-                return info;
+                return;
         }
         int e, f, g, t, u, v, n;
         if (l2 == 0) {
@@ -1859,7 +1839,7 @@ int get_Rt2(double *Rt2, int l1, int l2, double a, double fac, double *rpq,
                                 Rt2[n] = -Rt2[n];
                         }
                 } } }
-                return info;
+                return;
         }
 
         int stride_l = (l+1);
@@ -1897,7 +1877,7 @@ int get_Rt2(double *Rt2, int l1, int l2, double a, double fac, double *rpq,
                         }
                 }
         } } }
-        return info;
+        return;
 }
 
 #define Ex_at(i,j,t)    Ex[(i)*stride1+(j)*stride2+t]
@@ -2014,3 +1994,1742 @@ void get_E_tensor(double *Et, int li, int lj, double ai, double aj,
                 } }
         } } }
 }
+
+#ifdef SIMDD
+void eval_boys_simd(__MD *Rt, int l, __MD a, __MD fac, __MD *rpq);
+
+static void iter_Rt_1_simd(__MD *out, __MD *Rt, __MD rx, __MD ry, __MD rz)
+{
+        out[1] = rz * Rt[0];
+        out[2] = ry * Rt[0];
+        out[3] = rx * Rt[0];
+}
+
+static void iter_Rt_2_simd(__MD *out, __MD *Rt, __MD rx, __MD ry, __MD rz)
+{
+        out[1] = rz * Rt[0];
+        out[2] = rz * Rt[1] + Rt[0];
+        out[3] = ry * Rt[0];
+        out[4] = ry * Rt[1];
+        out[5] = ry * Rt[2] + Rt[0];
+        out[6] = rx * Rt[0];
+        out[7] = rx * Rt[1];
+        out[8] = rx * Rt[2];
+        out[9] = rx * Rt[3] + Rt[0];
+}
+
+static void iter_Rt_3_simd(__MD *out, __MD *Rt, __MD rx, __MD ry, __MD rz)
+{
+        out[1] = rz * Rt[0];
+        out[2] = rz * Rt[1] + Rt[0];
+        out[3] = rz * Rt[2] + 2 * Rt[1];
+        out[4] = ry * Rt[0];
+        out[5] = ry * Rt[1];
+        out[6] = ry * Rt[2];
+        out[7] = ry * Rt[3] + Rt[0];
+        out[8] = ry * Rt[4] + Rt[1];
+        out[9] = ry * Rt[5] + 2 * Rt[3];
+        out[10] = rx * Rt[0];
+        out[11] = rx * Rt[1];
+        out[12] = rx * Rt[2];
+        out[13] = rx * Rt[3];
+        out[14] = rx * Rt[4];
+        out[15] = rx * Rt[5];
+        out[16] = rx * Rt[6] + Rt[0];
+        out[17] = rx * Rt[7] + Rt[1];
+        out[18] = rx * Rt[8] + Rt[3];
+        out[19] = rx * Rt[9] + 2 * Rt[6];
+}
+
+static void iter_Rt_4_simd(__MD *out, __MD *Rt, __MD rx, __MD ry, __MD rz)
+{
+        out[1] = rz * Rt[0];
+        out[2] = rz * Rt[1] + Rt[0];
+        out[3] = rz * Rt[2] + 2 * Rt[1];
+        out[4] = rz * Rt[3] + 3 * Rt[2];
+        out[5] = ry * Rt[0];
+        out[6] = ry * Rt[1];
+        out[7] = ry * Rt[2];
+        out[8] = ry * Rt[3];
+        out[9] = ry * Rt[4] + Rt[0];
+        out[10] = ry * Rt[5] + Rt[1];
+        out[11] = ry * Rt[6] + Rt[2];
+        out[12] = ry * Rt[7] + 2 * Rt[4];
+        out[13] = ry * Rt[8] + 2 * Rt[5];
+        out[14] = ry * Rt[9] + 3 * Rt[7];
+        out[15] = rx * Rt[0];
+        out[16] = rx * Rt[1];
+        out[17] = rx * Rt[2];
+        out[18] = rx * Rt[3];
+        out[19] = rx * Rt[4];
+        out[20] = rx * Rt[5];
+        out[21] = rx * Rt[6];
+        out[22] = rx * Rt[7];
+        out[23] = rx * Rt[8];
+        out[24] = rx * Rt[9];
+        out[25] = rx * Rt[10] + Rt[0];
+        out[26] = rx * Rt[11] + Rt[1];
+        out[27] = rx * Rt[12] + Rt[2];
+        out[28] = rx * Rt[13] + Rt[4];
+        out[29] = rx * Rt[14] + Rt[5];
+        out[30] = rx * Rt[15] + Rt[7];
+        out[31] = rx * Rt[16] + 2 * Rt[10];
+        out[32] = rx * Rt[17] + 2 * Rt[11];
+        out[33] = rx * Rt[18] + 2 * Rt[13];
+        out[34] = rx * Rt[19] + 3 * Rt[16];
+}
+
+static void iter_Rt_5_simd(__MD *out, __MD *Rt, __MD rx, __MD ry, __MD rz)
+{
+        out[1] = rz * Rt[0];
+        out[2] = rz * Rt[1] + Rt[0];
+        out[3] = rz * Rt[2] + 2 * Rt[1];
+        out[4] = rz * Rt[3] + 3 * Rt[2];
+        out[5] = rz * Rt[4] + 4 * Rt[3];
+        out[6] = ry * Rt[0];
+        out[7] = ry * Rt[1];
+        out[8] = ry * Rt[2];
+        out[9] = ry * Rt[3];
+        out[10] = ry * Rt[4];
+        out[11] = ry * Rt[5] + Rt[0];
+        out[12] = ry * Rt[6] + Rt[1];
+        out[13] = ry * Rt[7] + Rt[2];
+        out[14] = ry * Rt[8] + Rt[3];
+        out[15] = ry * Rt[9] + 2 * Rt[5];
+        out[16] = ry * Rt[10] + 2 * Rt[6];
+        out[17] = ry * Rt[11] + 2 * Rt[7];
+        out[18] = ry * Rt[12] + 3 * Rt[9];
+        out[19] = ry * Rt[13] + 3 * Rt[10];
+        out[20] = ry * Rt[14] + 4 * Rt[12];
+        out[21] = rx * Rt[0];
+        out[22] = rx * Rt[1];
+        out[23] = rx * Rt[2];
+        out[24] = rx * Rt[3];
+        out[25] = rx * Rt[4];
+        out[26] = rx * Rt[5];
+        out[27] = rx * Rt[6];
+        out[28] = rx * Rt[7];
+        out[29] = rx * Rt[8];
+        out[30] = rx * Rt[9];
+        out[31] = rx * Rt[10];
+        out[32] = rx * Rt[11];
+        out[33] = rx * Rt[12];
+        out[34] = rx * Rt[13];
+        out[35] = rx * Rt[14];
+        out[36] = rx * Rt[15] + Rt[0];
+        out[37] = rx * Rt[16] + Rt[1];
+        out[38] = rx * Rt[17] + Rt[2];
+        out[39] = rx * Rt[18] + Rt[3];
+        out[40] = rx * Rt[19] + Rt[5];
+        out[41] = rx * Rt[20] + Rt[6];
+        out[42] = rx * Rt[21] + Rt[7];
+        out[43] = rx * Rt[22] + Rt[9];
+        out[44] = rx * Rt[23] + Rt[10];
+        out[45] = rx * Rt[24] + Rt[12];
+        out[46] = rx * Rt[25] + 2 * Rt[15];
+        out[47] = rx * Rt[26] + 2 * Rt[16];
+        out[48] = rx * Rt[27] + 2 * Rt[17];
+        out[49] = rx * Rt[28] + 2 * Rt[19];
+        out[50] = rx * Rt[29] + 2 * Rt[20];
+        out[51] = rx * Rt[30] + 2 * Rt[22];
+        out[52] = rx * Rt[31] + 3 * Rt[25];
+        out[53] = rx * Rt[32] + 3 * Rt[26];
+        out[54] = rx * Rt[33] + 3 * Rt[28];
+        out[55] = rx * Rt[34] + 4 * Rt[31];
+}
+
+static void iter_Rt_6_simd(__MD *out, __MD *Rt, __MD rx, __MD ry, __MD rz)
+{
+        out[1] = rz * Rt[0];
+        out[2] = rz * Rt[1] + Rt[0];
+        out[3] = rz * Rt[2] + 2 * Rt[1];
+        out[4] = rz * Rt[3] + 3 * Rt[2];
+        out[5] = rz * Rt[4] + 4 * Rt[3];
+        out[6] = rz * Rt[5] + 5 * Rt[4];
+        out[7] = ry * Rt[0];
+        out[8] = ry * Rt[1];
+        out[9] = ry * Rt[2];
+        out[10] = ry * Rt[3];
+        out[11] = ry * Rt[4];
+        out[12] = ry * Rt[5];
+        out[13] = ry * Rt[6] + Rt[0];
+        out[14] = ry * Rt[7] + Rt[1];
+        out[15] = ry * Rt[8] + Rt[2];
+        out[16] = ry * Rt[9] + Rt[3];
+        out[17] = ry * Rt[10] + Rt[4];
+        out[18] = ry * Rt[11] + 2 * Rt[6];
+        out[19] = ry * Rt[12] + 2 * Rt[7];
+        out[20] = ry * Rt[13] + 2 * Rt[8];
+        out[21] = ry * Rt[14] + 2 * Rt[9];
+        out[22] = ry * Rt[15] + 3 * Rt[11];
+        out[23] = ry * Rt[16] + 3 * Rt[12];
+        out[24] = ry * Rt[17] + 3 * Rt[13];
+        out[25] = ry * Rt[18] + 4 * Rt[15];
+        out[26] = ry * Rt[19] + 4 * Rt[16];
+        out[27] = ry * Rt[20] + 5 * Rt[18];
+        out[28] = rx * Rt[0];
+        out[29] = rx * Rt[1];
+        out[30] = rx * Rt[2];
+        out[31] = rx * Rt[3];
+        out[32] = rx * Rt[4];
+        out[33] = rx * Rt[5];
+        out[34] = rx * Rt[6];
+        out[35] = rx * Rt[7];
+        out[36] = rx * Rt[8];
+        out[37] = rx * Rt[9];
+        out[38] = rx * Rt[10];
+        out[39] = rx * Rt[11];
+        out[40] = rx * Rt[12];
+        out[41] = rx * Rt[13];
+        out[42] = rx * Rt[14];
+        out[43] = rx * Rt[15];
+        out[44] = rx * Rt[16];
+        out[45] = rx * Rt[17];
+        out[46] = rx * Rt[18];
+        out[47] = rx * Rt[19];
+        out[48] = rx * Rt[20];
+        out[49] = rx * Rt[21] + Rt[0];
+        out[50] = rx * Rt[22] + Rt[1];
+        out[51] = rx * Rt[23] + Rt[2];
+        out[52] = rx * Rt[24] + Rt[3];
+        out[53] = rx * Rt[25] + Rt[4];
+        out[54] = rx * Rt[26] + Rt[6];
+        out[55] = rx * Rt[27] + Rt[7];
+        out[56] = rx * Rt[28] + Rt[8];
+        out[57] = rx * Rt[29] + Rt[9];
+        out[58] = rx * Rt[30] + Rt[11];
+        out[59] = rx * Rt[31] + Rt[12];
+        out[60] = rx * Rt[32] + Rt[13];
+        out[61] = rx * Rt[33] + Rt[15];
+        out[62] = rx * Rt[34] + Rt[16];
+        out[63] = rx * Rt[35] + Rt[18];
+        out[64] = rx * Rt[36] + 2 * Rt[21];
+        out[65] = rx * Rt[37] + 2 * Rt[22];
+        out[66] = rx * Rt[38] + 2 * Rt[23];
+        out[67] = rx * Rt[39] + 2 * Rt[24];
+        out[68] = rx * Rt[40] + 2 * Rt[26];
+        out[69] = rx * Rt[41] + 2 * Rt[27];
+        out[70] = rx * Rt[42] + 2 * Rt[28];
+        out[71] = rx * Rt[43] + 2 * Rt[30];
+        out[72] = rx * Rt[44] + 2 * Rt[31];
+        out[73] = rx * Rt[45] + 2 * Rt[33];
+        out[74] = rx * Rt[46] + 3 * Rt[36];
+        out[75] = rx * Rt[47] + 3 * Rt[37];
+        out[76] = rx * Rt[48] + 3 * Rt[38];
+        out[77] = rx * Rt[49] + 3 * Rt[40];
+        out[78] = rx * Rt[50] + 3 * Rt[41];
+        out[79] = rx * Rt[51] + 3 * Rt[43];
+        out[80] = rx * Rt[52] + 4 * Rt[46];
+        out[81] = rx * Rt[53] + 4 * Rt[47];
+        out[82] = rx * Rt[54] + 4 * Rt[49];
+        out[83] = rx * Rt[55] + 5 * Rt[52];
+}
+
+static void iter_Rt_n_simd(__MD *out, __MD *Rt, __MD rx, __MD ry, __MD rz , int l)
+{
+        out++;
+        int *p1 = Rt_idx + Rt_idx_offsets[l];
+        int t, u, v, i, k;
+        k = 0;
+        i = 0;
+#pragma GCC ivdep
+        for (v = 0; v < l; v++) {
+                out[k] = rz * Rt[i] + v * Rt[p1[k]];
+                k++; i++;
+        }
+        i = 0;
+        for (u = 0; u < l; u++) {
+#pragma GCC ivdep
+        for (v = 0; v < l-u; v++) {
+                out[k] = ry * Rt[i] + u * Rt[p1[k]];
+                k++; i++;
+        } }
+        i = 0;
+        for (t = 0; t < l; t++) {
+                // corresponding to the nested loops
+                // for (u = 0; u < l-t; u++) for (v = 0; v < l-t-u; v++)
+                int uv;
+#pragma GCC ivdep
+                for (uv = 0; uv < (l-t) * (l-t+1) / 2; uv++) {
+                        out[k] = rx * Rt[i] + t * Rt[p1[k]];
+                        k++; i++;
+                }
+        }
+}
+
+#define ADDR(l, t, u, v) \
+        (lll - ((l)-(t)+1)*((l)-(t)+2)*((l)-(t)+3)/6 + \
+         ((l)-(t)+1)*((l)-(t)+2)/2 - ((l)-(t)-(u)+1)*((l)-(t)-(u)+2)/2 + (v))
+#define ADDR1(l, t, u, v) \
+        (lll1 - ((l)-(t)+1)*((l)-(t)+2)*((l)-(t)+3)/6 + \
+         ((l)-(t)+1)*((l)-(t)+2)/2 - ((l)-(t)-(u)+1)*((l)-(t)-(u)+2)/2 + (v))
+
+static void iter_Rt_iter_simd(__MD *out, __MD *Rt, __MD rx, __MD ry, __MD rz, int l)
+{
+        int l1 = l - 1;
+        int lll1 = (l1+1)*(l1+2)*(l1+3)/6;
+        out++;
+        int t, u, v, i, k;
+        k = 0;
+        i = 0;
+        out[k] = rz * Rt[i]; // v = 0
+        k++; i++;
+        for (v = 1; v < l; v++) {
+                out[k] = rz * Rt[i] + v * Rt[ADDR1(l1,0,0,v-1)];
+                k++; i++;
+        }
+        i = 0;
+        for (v = 0; v < l; v++) { // u = 0
+                out[k] = ry * Rt[i];
+                k++; i++;
+        }
+        for (u = 1; u < l; u++) {
+        for (v = 0; v < l-u; v++) {
+                out[k] = ry * Rt[i] + u * Rt[ADDR1(l1,0,u-1,v)];
+                k++; i++;
+        } }
+        i = 0;
+        for (u = 0; u < l; u++) { // t = 0;
+        for (v = 0; v < l-u; v++) {
+                out[k] = rx * Rt[i];
+                k++; i++;
+        } }
+        for (t = 1; t < l; t++) {
+                for (u = 0; u < l-t; u++) {
+                for (v = 0; v < l-t-u; v++) {
+                        out[k] = rx * Rt[i] + t * Rt[ADDR1(l1,t-1,u,v)];
+                        k++; i++;
+                } }
+        }
+}
+
+int get_R_tensor_simd(__MD *Rt, int l, __MD a, __MD fac, __MD *rpq, __MD *buf)
+{
+        if (l > LSUM_MAX) {
+                return -1;
+        }
+        if (l == 0) {
+                eval_boys_simd(Rt, l, a, fac, rpq);
+                return 0;
+        }
+
+        __MD boys[LSUM_MAX+1];
+        eval_boys_simd(boys, l, a, fac, rpq);
+        __MD rx = rpq[0];
+        __MD ry = rpq[1];
+        __MD rz = rpq[2];
+        if (l == 1) {
+                Rt[0] = boys[0];
+                iter_Rt_1_simd(Rt, boys+1, rx, ry, rz);
+                return 0;
+        }
+
+        __MD *tmp;
+        if (l % 2 == 0) {
+                tmp = buf;
+                buf = Rt;
+                Rt = tmp;
+        }
+        buf[0] = boys[l];
+
+        for (int n = 1; n <= l; n++) {
+                Rt[0] = boys[l-n];
+                switch (n) {
+                case 1: iter_Rt_1_simd(Rt, buf, rx, ry, rz); break;
+                case 2: iter_Rt_2_simd(Rt, buf, rx, ry, rz); break;
+                case 3: iter_Rt_3_simd(Rt, buf, rx, ry, rz); break;
+                case 4: iter_Rt_4_simd(Rt, buf, rx, ry, rz); break;
+                case 5: iter_Rt_5_simd(Rt, buf, rx, ry, rz); break;
+                case 6: iter_Rt_6_simd(Rt, buf, rx, ry, rz); break;
+                default:
+                        if (n <= RTIDX_MAX) {
+                                iter_Rt_n_simd(Rt, buf, rx, ry, rz, n);
+                        } else {
+                                iter_Rt_iter_simd(Rt, buf, rx, ry, rz, n);
+                        }
+                }
+                // swap input and output
+                tmp = buf;
+                buf = Rt;
+                Rt = tmp;
+        }
+        return 0;
+}
+
+static void Rt2_0_0_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 0, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*1*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+}
+static void Rt2_0_1_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 1, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*4*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+0*4*SIMDD+1, idx_Rt2, Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+0*4*SIMDD+2, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+0*4*SIMDD+3, idx_Rt2, Rt[3], sizeof(double));
+}
+static void Rt2_0_2_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 2, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*10*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+1, idx_Rt2, Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+2, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+3, idx_Rt2, Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+4, idx_Rt2, Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+5, idx_Rt2, Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+6, idx_Rt2, Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+7, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+8, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+9, idx_Rt2, Rt[9], sizeof(double));
+}
+static void Rt2_0_3_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 3, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*20*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+1, idx_Rt2, Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+2, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+3, idx_Rt2, Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+4, idx_Rt2, Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+5, idx_Rt2, Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+6, idx_Rt2, Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+7, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+8, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+9, idx_Rt2, Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+10, idx_Rt2, Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+11, idx_Rt2, Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+12, idx_Rt2, Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+13, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+14, idx_Rt2, Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+15, idx_Rt2, Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+16, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+17, idx_Rt2, Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+18, idx_Rt2, Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+19, idx_Rt2, Rt[19], sizeof(double));
+}
+static void Rt2_1_0_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 1, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*1*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+1*1*SIMDD+0, idx_Rt2, -Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+2*1*SIMDD+0, idx_Rt2, -Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+3*1*SIMDD+0, idx_Rt2, -Rt[3], sizeof(double));
+}
+static void Rt2_1_1_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 2, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*4*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+0*4*SIMDD+1, idx_Rt2, Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+0*4*SIMDD+2, idx_Rt2, Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+0*4*SIMDD+3, idx_Rt2, Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+1*4*SIMDD+0, idx_Rt2, -Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+1*4*SIMDD+1, idx_Rt2, -Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+1*4*SIMDD+2, idx_Rt2, -Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+1*4*SIMDD+3, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+2*4*SIMDD+0, idx_Rt2, -Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+2*4*SIMDD+1, idx_Rt2, -Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+2*4*SIMDD+2, idx_Rt2, -Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+2*4*SIMDD+3, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+3*4*SIMDD+0, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+3*4*SIMDD+1, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+3*4*SIMDD+2, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+3*4*SIMDD+3, idx_Rt2, -Rt[9], sizeof(double));
+}
+static void Rt2_1_2_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 3, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*10*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+1, idx_Rt2, Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+2, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+3, idx_Rt2, Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+4, idx_Rt2, Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+5, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+6, idx_Rt2, Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+7, idx_Rt2, Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+8, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+9, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+0, idx_Rt2, -Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+1, idx_Rt2, -Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+2, idx_Rt2, -Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+3, idx_Rt2, -Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+4, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+5, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+6, idx_Rt2, -Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+7, idx_Rt2, -Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+8, idx_Rt2, -Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+9, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+0, idx_Rt2, -Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+1, idx_Rt2, -Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+2, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+3, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+4, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+5, idx_Rt2, -Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+6, idx_Rt2, -Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+7, idx_Rt2, -Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+8, idx_Rt2, -Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+9, idx_Rt2, -Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+0, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+1, idx_Rt2, -Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+2, idx_Rt2, -Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+3, idx_Rt2, -Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+4, idx_Rt2, -Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+5, idx_Rt2, -Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+6, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+7, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+8, idx_Rt2, -Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+9, idx_Rt2, -Rt[19], sizeof(double));
+}
+static void Rt2_1_3_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 4, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*20*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+1, idx_Rt2, Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+2, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+3, idx_Rt2, Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+4, idx_Rt2, Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+5, idx_Rt2, Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+6, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+7, idx_Rt2, Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+8, idx_Rt2, Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+9, idx_Rt2, Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+10, idx_Rt2, Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+11, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+12, idx_Rt2, Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+13, idx_Rt2, Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+14, idx_Rt2, Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+15, idx_Rt2, Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+16, idx_Rt2, Rt[25], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+17, idx_Rt2, Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+18, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+19, idx_Rt2, Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+0, idx_Rt2, -Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+1, idx_Rt2, -Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+2, idx_Rt2, -Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+3, idx_Rt2, -Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+4, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+5, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+6, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+7, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+8, idx_Rt2, -Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+9, idx_Rt2, -Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+10, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+11, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+12, idx_Rt2, -Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+13, idx_Rt2, -Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+14, idx_Rt2, -Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+15, idx_Rt2, -Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+16, idx_Rt2, -Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+17, idx_Rt2, -Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+18, idx_Rt2, -Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+19, idx_Rt2, -Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+0, idx_Rt2, -Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+1, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+2, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+3, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+4, idx_Rt2, -Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+5, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+6, idx_Rt2, -Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+7, idx_Rt2, -Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+8, idx_Rt2, -Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+9, idx_Rt2, -Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+10, idx_Rt2, -Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+11, idx_Rt2, -Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+12, idx_Rt2, -Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+13, idx_Rt2, -Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+14, idx_Rt2, -Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+15, idx_Rt2, -Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+16, idx_Rt2, -Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+17, idx_Rt2, -Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+18, idx_Rt2, -Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+19, idx_Rt2, -Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+0, idx_Rt2, -Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+1, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+2, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+3, idx_Rt2, -Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+4, idx_Rt2, -Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+5, idx_Rt2, -Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+6, idx_Rt2, -Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+7, idx_Rt2, -Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+8, idx_Rt2, -Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+9, idx_Rt2, -Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+10, idx_Rt2, -Rt[25], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+11, idx_Rt2, -Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+12, idx_Rt2, -Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+13, idx_Rt2, -Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+14, idx_Rt2, -Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+15, idx_Rt2, -Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+16, idx_Rt2, -Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+17, idx_Rt2, -Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+18, idx_Rt2, -Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+19, idx_Rt2, -Rt[34], sizeof(double));
+}
+static void Rt2_2_0_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 2, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*1*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+1*1*SIMDD+0, idx_Rt2, -Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+2*1*SIMDD+0, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+3*1*SIMDD+0, idx_Rt2, -Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+4*1*SIMDD+0, idx_Rt2, Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+5*1*SIMDD+0, idx_Rt2, Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+6*1*SIMDD+0, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+7*1*SIMDD+0, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+8*1*SIMDD+0, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+9*1*SIMDD+0, idx_Rt2, Rt[9], sizeof(double));
+}
+static void Rt2_2_1_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 3, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*4*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+0*4*SIMDD+1, idx_Rt2, Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+0*4*SIMDD+2, idx_Rt2, Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+0*4*SIMDD+3, idx_Rt2, Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+1*4*SIMDD+0, idx_Rt2, -Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+1*4*SIMDD+1, idx_Rt2, -Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+1*4*SIMDD+2, idx_Rt2, -Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+1*4*SIMDD+3, idx_Rt2, -Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+2*4*SIMDD+0, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+2*4*SIMDD+1, idx_Rt2, Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+2*4*SIMDD+2, idx_Rt2, Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+2*4*SIMDD+3, idx_Rt2, Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+3*4*SIMDD+0, idx_Rt2, -Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+3*4*SIMDD+1, idx_Rt2, -Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+3*4*SIMDD+2, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+3*4*SIMDD+3, idx_Rt2, -Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+4*4*SIMDD+0, idx_Rt2, Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+4*4*SIMDD+1, idx_Rt2, Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+4*4*SIMDD+2, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+4*4*SIMDD+3, idx_Rt2, Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+5*4*SIMDD+0, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+5*4*SIMDD+1, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+5*4*SIMDD+2, idx_Rt2, Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+5*4*SIMDD+3, idx_Rt2, Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+6*4*SIMDD+0, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+6*4*SIMDD+1, idx_Rt2, -Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+6*4*SIMDD+2, idx_Rt2, -Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+6*4*SIMDD+3, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+7*4*SIMDD+0, idx_Rt2, Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+7*4*SIMDD+1, idx_Rt2, Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+7*4*SIMDD+2, idx_Rt2, Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+7*4*SIMDD+3, idx_Rt2, Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+8*4*SIMDD+0, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+8*4*SIMDD+1, idx_Rt2, Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+8*4*SIMDD+2, idx_Rt2, Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+8*4*SIMDD+3, idx_Rt2, Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+9*4*SIMDD+0, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+9*4*SIMDD+1, idx_Rt2, Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+9*4*SIMDD+2, idx_Rt2, Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+9*4*SIMDD+3, idx_Rt2, Rt[19], sizeof(double));
+}
+static void Rt2_2_2_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 4, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*10*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+1, idx_Rt2, Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+2, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+3, idx_Rt2, Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+4, idx_Rt2, Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+5, idx_Rt2, Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+6, idx_Rt2, Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+7, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+8, idx_Rt2, Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+9, idx_Rt2, Rt[25], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+0, idx_Rt2, -Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+1, idx_Rt2, -Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+2, idx_Rt2, -Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+3, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+4, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+5, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+6, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+7, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+8, idx_Rt2, -Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+9, idx_Rt2, -Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+0, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+1, idx_Rt2, Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+2, idx_Rt2, Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+3, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+4, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+5, idx_Rt2, Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+6, idx_Rt2, Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+7, idx_Rt2, Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+8, idx_Rt2, Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+9, idx_Rt2, Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+0, idx_Rt2, -Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+1, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+2, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+3, idx_Rt2, -Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+4, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+5, idx_Rt2, -Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+6, idx_Rt2, -Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+7, idx_Rt2, -Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+8, idx_Rt2, -Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+9, idx_Rt2, -Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+0, idx_Rt2, Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+1, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+2, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+3, idx_Rt2, Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+4, idx_Rt2, Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+5, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+6, idx_Rt2, Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+7, idx_Rt2, Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+8, idx_Rt2, Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+9, idx_Rt2, Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+0, idx_Rt2, Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+1, idx_Rt2, Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+2, idx_Rt2, Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+3, idx_Rt2, Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+4, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+5, idx_Rt2, Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+6, idx_Rt2, Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+7, idx_Rt2, Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+8, idx_Rt2, Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+9, idx_Rt2, Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+0, idx_Rt2, -Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+1, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+2, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+3, idx_Rt2, -Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+4, idx_Rt2, -Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+5, idx_Rt2, -Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+6, idx_Rt2, -Rt[25], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+7, idx_Rt2, -Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+8, idx_Rt2, -Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+9, idx_Rt2, -Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+0, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+1, idx_Rt2, Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+2, idx_Rt2, Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+3, idx_Rt2, Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+4, idx_Rt2, Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+5, idx_Rt2, Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+6, idx_Rt2, Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+7, idx_Rt2, Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+8, idx_Rt2, Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+9, idx_Rt2, Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+0, idx_Rt2, Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+1, idx_Rt2, Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+2, idx_Rt2, Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+3, idx_Rt2, Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+4, idx_Rt2, Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+5, idx_Rt2, Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+6, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+7, idx_Rt2, Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+8, idx_Rt2, Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+9, idx_Rt2, Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+0, idx_Rt2, Rt[25], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+1, idx_Rt2, Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+2, idx_Rt2, Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+3, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+4, idx_Rt2, Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+5, idx_Rt2, Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+6, idx_Rt2, Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+7, idx_Rt2, Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+8, idx_Rt2, Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+9, idx_Rt2, Rt[34], sizeof(double));
+}
+static void Rt2_2_3_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 5, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*20*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+1, idx_Rt2, Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+2, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+3, idx_Rt2, Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+4, idx_Rt2, Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+5, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+6, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+7, idx_Rt2, Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+8, idx_Rt2, Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+9, idx_Rt2, Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+10, idx_Rt2, Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+11, idx_Rt2, Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+12, idx_Rt2, Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+13, idx_Rt2, Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+14, idx_Rt2, Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+15, idx_Rt2, Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+16, idx_Rt2, Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+17, idx_Rt2, Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+18, idx_Rt2, Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+19, idx_Rt2, Rt[46], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+0, idx_Rt2, -Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+1, idx_Rt2, -Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+2, idx_Rt2, -Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+3, idx_Rt2, -Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+4, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+5, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+6, idx_Rt2, -Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+7, idx_Rt2, -Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+8, idx_Rt2, -Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+9, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+10, idx_Rt2, -Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+11, idx_Rt2, -Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+12, idx_Rt2, -Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+13, idx_Rt2, -Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+14, idx_Rt2, -Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+15, idx_Rt2, -Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+16, idx_Rt2, -Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+17, idx_Rt2, -Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+18, idx_Rt2, -Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+19, idx_Rt2, -Rt[47], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+0, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+1, idx_Rt2, Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+2, idx_Rt2, Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+3, idx_Rt2, Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+4, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+5, idx_Rt2, Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+6, idx_Rt2, Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+7, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+8, idx_Rt2, Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+9, idx_Rt2, Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+10, idx_Rt2, Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+11, idx_Rt2, Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+12, idx_Rt2, Rt[25], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+13, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+14, idx_Rt2, Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+15, idx_Rt2, Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+16, idx_Rt2, Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+17, idx_Rt2, Rt[39], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+18, idx_Rt2, Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+19, idx_Rt2, Rt[48], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+0, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+1, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+2, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+3, idx_Rt2, -Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+4, idx_Rt2, -Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+5, idx_Rt2, -Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+6, idx_Rt2, -Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+7, idx_Rt2, -Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+8, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+9, idx_Rt2, -Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+10, idx_Rt2, -Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+11, idx_Rt2, -Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+12, idx_Rt2, -Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+13, idx_Rt2, -Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+14, idx_Rt2, -Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+15, idx_Rt2, -Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+16, idx_Rt2, -Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+17, idx_Rt2, -Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+18, idx_Rt2, -Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+19, idx_Rt2, -Rt[49], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+0, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+1, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+2, idx_Rt2, Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+3, idx_Rt2, Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+4, idx_Rt2, Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+5, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+6, idx_Rt2, Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+7, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+8, idx_Rt2, Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+9, idx_Rt2, Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+10, idx_Rt2, Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+11, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+12, idx_Rt2, Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+13, idx_Rt2, Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+14, idx_Rt2, Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+15, idx_Rt2, Rt[34], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+16, idx_Rt2, Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+17, idx_Rt2, Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+18, idx_Rt2, Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+19, idx_Rt2, Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+0, idx_Rt2, Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+1, idx_Rt2, Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+2, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+3, idx_Rt2, Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+4, idx_Rt2, Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+5, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+6, idx_Rt2, Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+7, idx_Rt2, Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+8, idx_Rt2, Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+9, idx_Rt2, Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+10, idx_Rt2, Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+11, idx_Rt2, Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+12, idx_Rt2, Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+13, idx_Rt2, Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+14, idx_Rt2, Rt[34], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+15, idx_Rt2, Rt[35], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+16, idx_Rt2, Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+17, idx_Rt2, Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+18, idx_Rt2, Rt[45], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+19, idx_Rt2, Rt[51], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+0, idx_Rt2, -Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+1, idx_Rt2, -Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+2, idx_Rt2, -Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+3, idx_Rt2, -Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+4, idx_Rt2, -Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+5, idx_Rt2, -Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+6, idx_Rt2, -Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+7, idx_Rt2, -Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+8, idx_Rt2, -Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+9, idx_Rt2, -Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+10, idx_Rt2, -Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+11, idx_Rt2, -Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+12, idx_Rt2, -Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+13, idx_Rt2, -Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+14, idx_Rt2, -Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+15, idx_Rt2, -Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+16, idx_Rt2, -Rt[46], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+17, idx_Rt2, -Rt[47], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+18, idx_Rt2, -Rt[49], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+19, idx_Rt2, -Rt[52], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+0, idx_Rt2, Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+1, idx_Rt2, Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+2, idx_Rt2, Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+3, idx_Rt2, Rt[25], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+4, idx_Rt2, Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+5, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+6, idx_Rt2, Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+7, idx_Rt2, Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+8, idx_Rt2, Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+9, idx_Rt2, Rt[34], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+10, idx_Rt2, Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+11, idx_Rt2, Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+12, idx_Rt2, Rt[39], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+13, idx_Rt2, Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+14, idx_Rt2, Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+15, idx_Rt2, Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+16, idx_Rt2, Rt[47], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+17, idx_Rt2, Rt[48], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+18, idx_Rt2, Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+19, idx_Rt2, Rt[53], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+0, idx_Rt2, Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+1, idx_Rt2, Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+2, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+3, idx_Rt2, Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+4, idx_Rt2, Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+5, idx_Rt2, Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+6, idx_Rt2, Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+7, idx_Rt2, Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+8, idx_Rt2, Rt[34], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+9, idx_Rt2, Rt[35], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+10, idx_Rt2, Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+11, idx_Rt2, Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+12, idx_Rt2, Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+13, idx_Rt2, Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+14, idx_Rt2, Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+15, idx_Rt2, Rt[45], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+16, idx_Rt2, Rt[49], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+17, idx_Rt2, Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+18, idx_Rt2, Rt[51], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+19, idx_Rt2, Rt[54], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+0, idx_Rt2, Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+1, idx_Rt2, Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+2, idx_Rt2, Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+3, idx_Rt2, Rt[39], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+4, idx_Rt2, Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+5, idx_Rt2, Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+6, idx_Rt2, Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+7, idx_Rt2, Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+8, idx_Rt2, Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+9, idx_Rt2, Rt[45], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+10, idx_Rt2, Rt[46], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+11, idx_Rt2, Rt[47], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+12, idx_Rt2, Rt[48], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+13, idx_Rt2, Rt[49], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+14, idx_Rt2, Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+15, idx_Rt2, Rt[51], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+16, idx_Rt2, Rt[52], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+17, idx_Rt2, Rt[53], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+18, idx_Rt2, Rt[54], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+19, idx_Rt2, Rt[55], sizeof(double));
+}
+static void Rt2_3_0_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 3, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*1*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+1*1*SIMDD+0, idx_Rt2, -Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+2*1*SIMDD+0, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+3*1*SIMDD+0, idx_Rt2, -Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+4*1*SIMDD+0, idx_Rt2, -Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+5*1*SIMDD+0, idx_Rt2, Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+6*1*SIMDD+0, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+7*1*SIMDD+0, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+8*1*SIMDD+0, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+9*1*SIMDD+0, idx_Rt2, -Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+10*1*SIMDD+0, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+11*1*SIMDD+0, idx_Rt2, Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+12*1*SIMDD+0, idx_Rt2, -Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+13*1*SIMDD+0, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+14*1*SIMDD+0, idx_Rt2, -Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+15*1*SIMDD+0, idx_Rt2, -Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+16*1*SIMDD+0, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+17*1*SIMDD+0, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+18*1*SIMDD+0, idx_Rt2, -Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+19*1*SIMDD+0, idx_Rt2, -Rt[19], sizeof(double));
+}
+static void Rt2_3_1_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 4, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*4*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+0*4*SIMDD+1, idx_Rt2, Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+0*4*SIMDD+2, idx_Rt2, Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+0*4*SIMDD+3, idx_Rt2, Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+1*4*SIMDD+0, idx_Rt2, -Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+1*4*SIMDD+1, idx_Rt2, -Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+1*4*SIMDD+2, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+1*4*SIMDD+3, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+2*4*SIMDD+0, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+2*4*SIMDD+1, idx_Rt2, Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+2*4*SIMDD+2, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+2*4*SIMDD+3, idx_Rt2, Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+3*4*SIMDD+0, idx_Rt2, -Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+3*4*SIMDD+1, idx_Rt2, -Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+3*4*SIMDD+2, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+3*4*SIMDD+3, idx_Rt2, -Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+4*4*SIMDD+0, idx_Rt2, -Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+4*4*SIMDD+1, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+4*4*SIMDD+2, idx_Rt2, -Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+4*4*SIMDD+3, idx_Rt2, -Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+5*4*SIMDD+0, idx_Rt2, Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+5*4*SIMDD+1, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+5*4*SIMDD+2, idx_Rt2, Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+5*4*SIMDD+3, idx_Rt2, Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+6*4*SIMDD+0, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+6*4*SIMDD+1, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+6*4*SIMDD+2, idx_Rt2, -Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+6*4*SIMDD+3, idx_Rt2, -Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+7*4*SIMDD+0, idx_Rt2, Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+7*4*SIMDD+1, idx_Rt2, Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+7*4*SIMDD+2, idx_Rt2, Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+7*4*SIMDD+3, idx_Rt2, Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+8*4*SIMDD+0, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+8*4*SIMDD+1, idx_Rt2, -Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+8*4*SIMDD+2, idx_Rt2, -Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+8*4*SIMDD+3, idx_Rt2, -Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+9*4*SIMDD+0, idx_Rt2, -Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+9*4*SIMDD+1, idx_Rt2, -Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+9*4*SIMDD+2, idx_Rt2, -Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+9*4*SIMDD+3, idx_Rt2, -Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+10*4*SIMDD+0, idx_Rt2, -Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+10*4*SIMDD+1, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+10*4*SIMDD+2, idx_Rt2, -Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+10*4*SIMDD+3, idx_Rt2, -Rt[25], sizeof(double));
+        MM_SCATTER(Rt2+11*4*SIMDD+0, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+11*4*SIMDD+1, idx_Rt2, Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+11*4*SIMDD+2, idx_Rt2, Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+11*4*SIMDD+3, idx_Rt2, Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+12*4*SIMDD+0, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+12*4*SIMDD+1, idx_Rt2, -Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+12*4*SIMDD+2, idx_Rt2, -Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+12*4*SIMDD+3, idx_Rt2, -Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+13*4*SIMDD+0, idx_Rt2, Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+13*4*SIMDD+1, idx_Rt2, Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+13*4*SIMDD+2, idx_Rt2, Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+13*4*SIMDD+3, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+14*4*SIMDD+0, idx_Rt2, -Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+14*4*SIMDD+1, idx_Rt2, -Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+14*4*SIMDD+2, idx_Rt2, -Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+14*4*SIMDD+3, idx_Rt2, -Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+15*4*SIMDD+0, idx_Rt2, -Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+15*4*SIMDD+1, idx_Rt2, -Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+15*4*SIMDD+2, idx_Rt2, -Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+15*4*SIMDD+3, idx_Rt2, -Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+16*4*SIMDD+0, idx_Rt2, Rt[25], sizeof(double));
+        MM_SCATTER(Rt2+16*4*SIMDD+1, idx_Rt2, Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+16*4*SIMDD+2, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+16*4*SIMDD+3, idx_Rt2, Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+17*4*SIMDD+0, idx_Rt2, -Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+17*4*SIMDD+1, idx_Rt2, -Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+17*4*SIMDD+2, idx_Rt2, -Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+17*4*SIMDD+3, idx_Rt2, -Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+18*4*SIMDD+0, idx_Rt2, -Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+18*4*SIMDD+1, idx_Rt2, -Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+18*4*SIMDD+2, idx_Rt2, -Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+18*4*SIMDD+3, idx_Rt2, -Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+19*4*SIMDD+0, idx_Rt2, -Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+19*4*SIMDD+1, idx_Rt2, -Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+19*4*SIMDD+2, idx_Rt2, -Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+19*4*SIMDD+3, idx_Rt2, -Rt[34], sizeof(double));
+}
+static void Rt2_3_2_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 5, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*10*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+1, idx_Rt2, Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+2, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+3, idx_Rt2, Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+4, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+5, idx_Rt2, Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+6, idx_Rt2, Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+7, idx_Rt2, Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+8, idx_Rt2, Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+0*10*SIMDD+9, idx_Rt2, Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+0, idx_Rt2, -Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+1, idx_Rt2, -Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+2, idx_Rt2, -Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+3, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+4, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+5, idx_Rt2, -Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+6, idx_Rt2, -Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+7, idx_Rt2, -Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+8, idx_Rt2, -Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+1*10*SIMDD+9, idx_Rt2, -Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+0, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+1, idx_Rt2, Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+2, idx_Rt2, Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+3, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+4, idx_Rt2, Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+5, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+6, idx_Rt2, Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+7, idx_Rt2, Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+8, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+2*10*SIMDD+9, idx_Rt2, Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+0, idx_Rt2, -Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+1, idx_Rt2, -Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+2, idx_Rt2, -Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+3, idx_Rt2, -Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+4, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+5, idx_Rt2, -Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+6, idx_Rt2, -Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+7, idx_Rt2, -Rt[25], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+8, idx_Rt2, -Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+3*10*SIMDD+9, idx_Rt2, -Rt[39], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+0, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+1, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+2, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+3, idx_Rt2, -Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+4, idx_Rt2, -Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+5, idx_Rt2, -Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+6, idx_Rt2, -Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+7, idx_Rt2, -Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+8, idx_Rt2, -Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+4*10*SIMDD+9, idx_Rt2, -Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+0, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+1, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+2, idx_Rt2, Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+3, idx_Rt2, Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+4, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+5, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+6, idx_Rt2, Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+7, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+8, idx_Rt2, Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+5*10*SIMDD+9, idx_Rt2, Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+0, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+1, idx_Rt2, -Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+2, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+3, idx_Rt2, -Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+4, idx_Rt2, -Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+5, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+6, idx_Rt2, -Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+7, idx_Rt2, -Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+8, idx_Rt2, -Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+6*10*SIMDD+9, idx_Rt2, -Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+0, idx_Rt2, Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+1, idx_Rt2, Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+2, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+3, idx_Rt2, Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+4, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+5, idx_Rt2, Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+6, idx_Rt2, Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+7, idx_Rt2, Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+8, idx_Rt2, Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+7*10*SIMDD+9, idx_Rt2, Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+0, idx_Rt2, -Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+1, idx_Rt2, -Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+2, idx_Rt2, -Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+3, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+4, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+5, idx_Rt2, -Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+6, idx_Rt2, -Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+7, idx_Rt2, -Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+8, idx_Rt2, -Rt[34], sizeof(double));
+        MM_SCATTER(Rt2+8*10*SIMDD+9, idx_Rt2, -Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+0, idx_Rt2, -Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+1, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+2, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+3, idx_Rt2, -Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+4, idx_Rt2, -Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+5, idx_Rt2, -Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+6, idx_Rt2, -Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+7, idx_Rt2, -Rt[34], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+8, idx_Rt2, -Rt[35], sizeof(double));
+        MM_SCATTER(Rt2+9*10*SIMDD+9, idx_Rt2, -Rt[45], sizeof(double));
+        MM_SCATTER(Rt2+10*10*SIMDD+0, idx_Rt2, -Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+10*10*SIMDD+1, idx_Rt2, -Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+10*10*SIMDD+2, idx_Rt2, -Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+10*10*SIMDD+3, idx_Rt2, -Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+10*10*SIMDD+4, idx_Rt2, -Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+10*10*SIMDD+5, idx_Rt2, -Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+10*10*SIMDD+6, idx_Rt2, -Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+10*10*SIMDD+7, idx_Rt2, -Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+10*10*SIMDD+8, idx_Rt2, -Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+10*10*SIMDD+9, idx_Rt2, -Rt[46], sizeof(double));
+        MM_SCATTER(Rt2+11*10*SIMDD+0, idx_Rt2, Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+11*10*SIMDD+1, idx_Rt2, Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+11*10*SIMDD+2, idx_Rt2, Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+11*10*SIMDD+3, idx_Rt2, Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+11*10*SIMDD+4, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+11*10*SIMDD+5, idx_Rt2, Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+11*10*SIMDD+6, idx_Rt2, Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+11*10*SIMDD+7, idx_Rt2, Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+11*10*SIMDD+8, idx_Rt2, Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+11*10*SIMDD+9, idx_Rt2, Rt[47], sizeof(double));
+        MM_SCATTER(Rt2+12*10*SIMDD+0, idx_Rt2, -Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+12*10*SIMDD+1, idx_Rt2, -Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+12*10*SIMDD+2, idx_Rt2, -Rt[25], sizeof(double));
+        MM_SCATTER(Rt2+12*10*SIMDD+3, idx_Rt2, -Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+12*10*SIMDD+4, idx_Rt2, -Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+12*10*SIMDD+5, idx_Rt2, -Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+12*10*SIMDD+6, idx_Rt2, -Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+12*10*SIMDD+7, idx_Rt2, -Rt[39], sizeof(double));
+        MM_SCATTER(Rt2+12*10*SIMDD+8, idx_Rt2, -Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+12*10*SIMDD+9, idx_Rt2, -Rt[48], sizeof(double));
+        MM_SCATTER(Rt2+13*10*SIMDD+0, idx_Rt2, Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+13*10*SIMDD+1, idx_Rt2, Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+13*10*SIMDD+2, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+13*10*SIMDD+3, idx_Rt2, Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+13*10*SIMDD+4, idx_Rt2, Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+13*10*SIMDD+5, idx_Rt2, Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+13*10*SIMDD+6, idx_Rt2, Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+13*10*SIMDD+7, idx_Rt2, Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+13*10*SIMDD+8, idx_Rt2, Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+13*10*SIMDD+9, idx_Rt2, Rt[49], sizeof(double));
+        MM_SCATTER(Rt2+14*10*SIMDD+0, idx_Rt2, -Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+14*10*SIMDD+1, idx_Rt2, -Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+14*10*SIMDD+2, idx_Rt2, -Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+14*10*SIMDD+3, idx_Rt2, -Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+14*10*SIMDD+4, idx_Rt2, -Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+14*10*SIMDD+5, idx_Rt2, -Rt[34], sizeof(double));
+        MM_SCATTER(Rt2+14*10*SIMDD+6, idx_Rt2, -Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+14*10*SIMDD+7, idx_Rt2, -Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+14*10*SIMDD+8, idx_Rt2, -Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+14*10*SIMDD+9, idx_Rt2, -Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+15*10*SIMDD+0, idx_Rt2, -Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+15*10*SIMDD+1, idx_Rt2, -Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+15*10*SIMDD+2, idx_Rt2, -Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+15*10*SIMDD+3, idx_Rt2, -Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+15*10*SIMDD+4, idx_Rt2, -Rt[34], sizeof(double));
+        MM_SCATTER(Rt2+15*10*SIMDD+5, idx_Rt2, -Rt[35], sizeof(double));
+        MM_SCATTER(Rt2+15*10*SIMDD+6, idx_Rt2, -Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+15*10*SIMDD+7, idx_Rt2, -Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+15*10*SIMDD+8, idx_Rt2, -Rt[45], sizeof(double));
+        MM_SCATTER(Rt2+15*10*SIMDD+9, idx_Rt2, -Rt[51], sizeof(double));
+        MM_SCATTER(Rt2+16*10*SIMDD+0, idx_Rt2, Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+16*10*SIMDD+1, idx_Rt2, Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+16*10*SIMDD+2, idx_Rt2, Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+16*10*SIMDD+3, idx_Rt2, Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+16*10*SIMDD+4, idx_Rt2, Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+16*10*SIMDD+5, idx_Rt2, Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+16*10*SIMDD+6, idx_Rt2, Rt[46], sizeof(double));
+        MM_SCATTER(Rt2+16*10*SIMDD+7, idx_Rt2, Rt[47], sizeof(double));
+        MM_SCATTER(Rt2+16*10*SIMDD+8, idx_Rt2, Rt[49], sizeof(double));
+        MM_SCATTER(Rt2+16*10*SIMDD+9, idx_Rt2, Rt[52], sizeof(double));
+        MM_SCATTER(Rt2+17*10*SIMDD+0, idx_Rt2, -Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+17*10*SIMDD+1, idx_Rt2, -Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+17*10*SIMDD+2, idx_Rt2, -Rt[39], sizeof(double));
+        MM_SCATTER(Rt2+17*10*SIMDD+3, idx_Rt2, -Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+17*10*SIMDD+4, idx_Rt2, -Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+17*10*SIMDD+5, idx_Rt2, -Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+17*10*SIMDD+6, idx_Rt2, -Rt[47], sizeof(double));
+        MM_SCATTER(Rt2+17*10*SIMDD+7, idx_Rt2, -Rt[48], sizeof(double));
+        MM_SCATTER(Rt2+17*10*SIMDD+8, idx_Rt2, -Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+17*10*SIMDD+9, idx_Rt2, -Rt[53], sizeof(double));
+        MM_SCATTER(Rt2+18*10*SIMDD+0, idx_Rt2, -Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+18*10*SIMDD+1, idx_Rt2, -Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+18*10*SIMDD+2, idx_Rt2, -Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+18*10*SIMDD+3, idx_Rt2, -Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+18*10*SIMDD+4, idx_Rt2, -Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+18*10*SIMDD+5, idx_Rt2, -Rt[45], sizeof(double));
+        MM_SCATTER(Rt2+18*10*SIMDD+6, idx_Rt2, -Rt[49], sizeof(double));
+        MM_SCATTER(Rt2+18*10*SIMDD+7, idx_Rt2, -Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+18*10*SIMDD+8, idx_Rt2, -Rt[51], sizeof(double));
+        MM_SCATTER(Rt2+18*10*SIMDD+9, idx_Rt2, -Rt[54], sizeof(double));
+        MM_SCATTER(Rt2+19*10*SIMDD+0, idx_Rt2, -Rt[46], sizeof(double));
+        MM_SCATTER(Rt2+19*10*SIMDD+1, idx_Rt2, -Rt[47], sizeof(double));
+        MM_SCATTER(Rt2+19*10*SIMDD+2, idx_Rt2, -Rt[48], sizeof(double));
+        MM_SCATTER(Rt2+19*10*SIMDD+3, idx_Rt2, -Rt[49], sizeof(double));
+        MM_SCATTER(Rt2+19*10*SIMDD+4, idx_Rt2, -Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+19*10*SIMDD+5, idx_Rt2, -Rt[51], sizeof(double));
+        MM_SCATTER(Rt2+19*10*SIMDD+6, idx_Rt2, -Rt[52], sizeof(double));
+        MM_SCATTER(Rt2+19*10*SIMDD+7, idx_Rt2, -Rt[53], sizeof(double));
+        MM_SCATTER(Rt2+19*10*SIMDD+8, idx_Rt2, -Rt[54], sizeof(double));
+        MM_SCATTER(Rt2+19*10*SIMDD+9, idx_Rt2, -Rt[55], sizeof(double));
+}
+static void Rt2_3_3_simd(double *Rt2, __MD a, __MD fac, __MD *rpq, __MD *Rt, __MI32 idx_Rt2)
+{
+        get_R_tensor_simd(Rt, 6, a, fac, rpq, (__MD *)Rt2);
+        MM_SCATTER(Rt2+0*20*SIMDD+0, idx_Rt2, Rt[0], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+1, idx_Rt2, Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+2, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+3, idx_Rt2, Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+4, idx_Rt2, Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+5, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+6, idx_Rt2, Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+7, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+8, idx_Rt2, Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+9, idx_Rt2, Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+10, idx_Rt2, Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+11, idx_Rt2, Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+12, idx_Rt2, Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+13, idx_Rt2, Rt[34], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+14, idx_Rt2, Rt[35], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+15, idx_Rt2, Rt[39], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+16, idx_Rt2, Rt[49], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+17, idx_Rt2, Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+18, idx_Rt2, Rt[54], sizeof(double));
+        MM_SCATTER(Rt2+0*20*SIMDD+19, idx_Rt2, Rt[64], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+0, idx_Rt2, -Rt[1], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+1, idx_Rt2, -Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+2, idx_Rt2, -Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+3, idx_Rt2, -Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+4, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+5, idx_Rt2, -Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+6, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+7, idx_Rt2, -Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+8, idx_Rt2, -Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+9, idx_Rt2, -Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+10, idx_Rt2, -Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+11, idx_Rt2, -Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+12, idx_Rt2, -Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+13, idx_Rt2, -Rt[35], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+14, idx_Rt2, -Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+15, idx_Rt2, -Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+16, idx_Rt2, -Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+17, idx_Rt2, -Rt[51], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+18, idx_Rt2, -Rt[55], sizeof(double));
+        MM_SCATTER(Rt2+1*20*SIMDD+19, idx_Rt2, -Rt[65], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+0, idx_Rt2, Rt[2], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+1, idx_Rt2, Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+2, idx_Rt2, Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+3, idx_Rt2, Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+4, idx_Rt2, Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+5, idx_Rt2, Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+6, idx_Rt2, Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+7, idx_Rt2, Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+8, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+9, idx_Rt2, Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+10, idx_Rt2, Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+11, idx_Rt2, Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+12, idx_Rt2, Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+13, idx_Rt2, Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+14, idx_Rt2, Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+15, idx_Rt2, Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+16, idx_Rt2, Rt[51], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+17, idx_Rt2, Rt[52], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+18, idx_Rt2, Rt[56], sizeof(double));
+        MM_SCATTER(Rt2+2*20*SIMDD+19, idx_Rt2, Rt[66], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+0, idx_Rt2, -Rt[3], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+1, idx_Rt2, -Rt[4], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+2, idx_Rt2, -Rt[5], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+3, idx_Rt2, -Rt[6], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+4, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+5, idx_Rt2, -Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+6, idx_Rt2, -Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+7, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+8, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+9, idx_Rt2, -Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+10, idx_Rt2, -Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+11, idx_Rt2, -Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+12, idx_Rt2, -Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+13, idx_Rt2, -Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+14, idx_Rt2, -Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+15, idx_Rt2, -Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+16, idx_Rt2, -Rt[52], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+17, idx_Rt2, -Rt[53], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+18, idx_Rt2, -Rt[57], sizeof(double));
+        MM_SCATTER(Rt2+3*20*SIMDD+19, idx_Rt2, -Rt[67], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+0, idx_Rt2, -Rt[7], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+1, idx_Rt2, -Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+2, idx_Rt2, -Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+3, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+4, idx_Rt2, -Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+5, idx_Rt2, -Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+6, idx_Rt2, -Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+7, idx_Rt2, -Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+8, idx_Rt2, -Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+9, idx_Rt2, -Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+10, idx_Rt2, -Rt[34], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+11, idx_Rt2, -Rt[35], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+12, idx_Rt2, -Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+13, idx_Rt2, -Rt[39], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+14, idx_Rt2, -Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+15, idx_Rt2, -Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+16, idx_Rt2, -Rt[54], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+17, idx_Rt2, -Rt[55], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+18, idx_Rt2, -Rt[58], sizeof(double));
+        MM_SCATTER(Rt2+4*20*SIMDD+19, idx_Rt2, -Rt[68], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+0, idx_Rt2, Rt[8], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+1, idx_Rt2, Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+2, idx_Rt2, Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+3, idx_Rt2, Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+4, idx_Rt2, Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+5, idx_Rt2, Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+6, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+7, idx_Rt2, Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+8, idx_Rt2, Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+9, idx_Rt2, Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+10, idx_Rt2, Rt[35], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+11, idx_Rt2, Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+12, idx_Rt2, Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+13, idx_Rt2, Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+14, idx_Rt2, Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+15, idx_Rt2, Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+16, idx_Rt2, Rt[55], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+17, idx_Rt2, Rt[56], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+18, idx_Rt2, Rt[59], sizeof(double));
+        MM_SCATTER(Rt2+5*20*SIMDD+19, idx_Rt2, Rt[69], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+0, idx_Rt2, -Rt[9], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+1, idx_Rt2, -Rt[10], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+2, idx_Rt2, -Rt[11], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+3, idx_Rt2, -Rt[12], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+4, idx_Rt2, -Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+5, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+6, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+7, idx_Rt2, -Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+8, idx_Rt2, -Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+9, idx_Rt2, -Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+10, idx_Rt2, -Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+11, idx_Rt2, -Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+12, idx_Rt2, -Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+13, idx_Rt2, -Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+14, idx_Rt2, -Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+15, idx_Rt2, -Rt[45], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+16, idx_Rt2, -Rt[56], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+17, idx_Rt2, -Rt[57], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+18, idx_Rt2, -Rt[60], sizeof(double));
+        MM_SCATTER(Rt2+6*20*SIMDD+19, idx_Rt2, -Rt[70], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+0, idx_Rt2, Rt[13], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+1, idx_Rt2, Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+2, idx_Rt2, Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+3, idx_Rt2, Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+4, idx_Rt2, Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+5, idx_Rt2, Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+6, idx_Rt2, Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+7, idx_Rt2, Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+8, idx_Rt2, Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+9, idx_Rt2, Rt[25], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+10, idx_Rt2, Rt[39], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+11, idx_Rt2, Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+12, idx_Rt2, Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+13, idx_Rt2, Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+14, idx_Rt2, Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+15, idx_Rt2, Rt[46], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+16, idx_Rt2, Rt[58], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+17, idx_Rt2, Rt[59], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+18, idx_Rt2, Rt[61], sizeof(double));
+        MM_SCATTER(Rt2+7*20*SIMDD+19, idx_Rt2, Rt[71], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+0, idx_Rt2, -Rt[14], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+1, idx_Rt2, -Rt[15], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+2, idx_Rt2, -Rt[16], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+3, idx_Rt2, -Rt[17], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+4, idx_Rt2, -Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+5, idx_Rt2, -Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+6, idx_Rt2, -Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+7, idx_Rt2, -Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+8, idx_Rt2, -Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+9, idx_Rt2, -Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+10, idx_Rt2, -Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+11, idx_Rt2, -Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+12, idx_Rt2, -Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+13, idx_Rt2, -Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+14, idx_Rt2, -Rt[45], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+15, idx_Rt2, -Rt[47], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+16, idx_Rt2, -Rt[59], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+17, idx_Rt2, -Rt[60], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+18, idx_Rt2, -Rt[62], sizeof(double));
+        MM_SCATTER(Rt2+8*20*SIMDD+19, idx_Rt2, -Rt[72], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+0, idx_Rt2, -Rt[18], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+1, idx_Rt2, -Rt[19], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+2, idx_Rt2, -Rt[20], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+3, idx_Rt2, -Rt[21], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+4, idx_Rt2, -Rt[22], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+5, idx_Rt2, -Rt[23], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+6, idx_Rt2, -Rt[24], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+7, idx_Rt2, -Rt[25], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+8, idx_Rt2, -Rt[26], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+9, idx_Rt2, -Rt[27], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+10, idx_Rt2, -Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+11, idx_Rt2, -Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+12, idx_Rt2, -Rt[45], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+13, idx_Rt2, -Rt[46], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+14, idx_Rt2, -Rt[47], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+15, idx_Rt2, -Rt[48], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+16, idx_Rt2, -Rt[61], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+17, idx_Rt2, -Rt[62], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+18, idx_Rt2, -Rt[63], sizeof(double));
+        MM_SCATTER(Rt2+9*20*SIMDD+19, idx_Rt2, -Rt[73], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+0, idx_Rt2, -Rt[28], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+1, idx_Rt2, -Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+2, idx_Rt2, -Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+3, idx_Rt2, -Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+4, idx_Rt2, -Rt[34], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+5, idx_Rt2, -Rt[35], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+6, idx_Rt2, -Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+7, idx_Rt2, -Rt[39], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+8, idx_Rt2, -Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+9, idx_Rt2, -Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+10, idx_Rt2, -Rt[49], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+11, idx_Rt2, -Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+12, idx_Rt2, -Rt[51], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+13, idx_Rt2, -Rt[54], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+14, idx_Rt2, -Rt[55], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+15, idx_Rt2, -Rt[58], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+16, idx_Rt2, -Rt[64], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+17, idx_Rt2, -Rt[65], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+18, idx_Rt2, -Rt[68], sizeof(double));
+        MM_SCATTER(Rt2+10*20*SIMDD+19, idx_Rt2, -Rt[74], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+0, idx_Rt2, Rt[29], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+1, idx_Rt2, Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+2, idx_Rt2, Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+3, idx_Rt2, Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+4, idx_Rt2, Rt[35], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+5, idx_Rt2, Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+6, idx_Rt2, Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+7, idx_Rt2, Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+8, idx_Rt2, Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+9, idx_Rt2, Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+10, idx_Rt2, Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+11, idx_Rt2, Rt[51], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+12, idx_Rt2, Rt[52], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+13, idx_Rt2, Rt[55], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+14, idx_Rt2, Rt[56], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+15, idx_Rt2, Rt[59], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+16, idx_Rt2, Rt[65], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+17, idx_Rt2, Rt[66], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+18, idx_Rt2, Rt[69], sizeof(double));
+        MM_SCATTER(Rt2+11*20*SIMDD+19, idx_Rt2, Rt[75], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+0, idx_Rt2, -Rt[30], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+1, idx_Rt2, -Rt[31], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+2, idx_Rt2, -Rt[32], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+3, idx_Rt2, -Rt[33], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+4, idx_Rt2, -Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+5, idx_Rt2, -Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+6, idx_Rt2, -Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+7, idx_Rt2, -Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+8, idx_Rt2, -Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+9, idx_Rt2, -Rt[45], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+10, idx_Rt2, -Rt[51], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+11, idx_Rt2, -Rt[52], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+12, idx_Rt2, -Rt[53], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+13, idx_Rt2, -Rt[56], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+14, idx_Rt2, -Rt[57], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+15, idx_Rt2, -Rt[60], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+16, idx_Rt2, -Rt[66], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+17, idx_Rt2, -Rt[67], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+18, idx_Rt2, -Rt[70], sizeof(double));
+        MM_SCATTER(Rt2+12*20*SIMDD+19, idx_Rt2, -Rt[76], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+0, idx_Rt2, Rt[34], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+1, idx_Rt2, Rt[35], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+2, idx_Rt2, Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+3, idx_Rt2, Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+4, idx_Rt2, Rt[39], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+5, idx_Rt2, Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+6, idx_Rt2, Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+7, idx_Rt2, Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+8, idx_Rt2, Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+9, idx_Rt2, Rt[46], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+10, idx_Rt2, Rt[54], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+11, idx_Rt2, Rt[55], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+12, idx_Rt2, Rt[56], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+13, idx_Rt2, Rt[58], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+14, idx_Rt2, Rt[59], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+15, idx_Rt2, Rt[61], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+16, idx_Rt2, Rt[68], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+17, idx_Rt2, Rt[69], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+18, idx_Rt2, Rt[71], sizeof(double));
+        MM_SCATTER(Rt2+13*20*SIMDD+19, idx_Rt2, Rt[77], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+0, idx_Rt2, -Rt[35], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+1, idx_Rt2, -Rt[36], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+2, idx_Rt2, -Rt[37], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+3, idx_Rt2, -Rt[38], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+4, idx_Rt2, -Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+5, idx_Rt2, -Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+6, idx_Rt2, -Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+7, idx_Rt2, -Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+8, idx_Rt2, -Rt[45], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+9, idx_Rt2, -Rt[47], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+10, idx_Rt2, -Rt[55], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+11, idx_Rt2, -Rt[56], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+12, idx_Rt2, -Rt[57], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+13, idx_Rt2, -Rt[59], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+14, idx_Rt2, -Rt[60], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+15, idx_Rt2, -Rt[62], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+16, idx_Rt2, -Rt[69], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+17, idx_Rt2, -Rt[70], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+18, idx_Rt2, -Rt[72], sizeof(double));
+        MM_SCATTER(Rt2+14*20*SIMDD+19, idx_Rt2, -Rt[78], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+0, idx_Rt2, -Rt[39], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+1, idx_Rt2, -Rt[40], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+2, idx_Rt2, -Rt[41], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+3, idx_Rt2, -Rt[42], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+4, idx_Rt2, -Rt[43], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+5, idx_Rt2, -Rt[44], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+6, idx_Rt2, -Rt[45], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+7, idx_Rt2, -Rt[46], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+8, idx_Rt2, -Rt[47], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+9, idx_Rt2, -Rt[48], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+10, idx_Rt2, -Rt[58], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+11, idx_Rt2, -Rt[59], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+12, idx_Rt2, -Rt[60], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+13, idx_Rt2, -Rt[61], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+14, idx_Rt2, -Rt[62], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+15, idx_Rt2, -Rt[63], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+16, idx_Rt2, -Rt[71], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+17, idx_Rt2, -Rt[72], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+18, idx_Rt2, -Rt[73], sizeof(double));
+        MM_SCATTER(Rt2+15*20*SIMDD+19, idx_Rt2, -Rt[79], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+0, idx_Rt2, Rt[49], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+1, idx_Rt2, Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+2, idx_Rt2, Rt[51], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+3, idx_Rt2, Rt[52], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+4, idx_Rt2, Rt[54], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+5, idx_Rt2, Rt[55], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+6, idx_Rt2, Rt[56], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+7, idx_Rt2, Rt[58], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+8, idx_Rt2, Rt[59], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+9, idx_Rt2, Rt[61], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+10, idx_Rt2, Rt[64], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+11, idx_Rt2, Rt[65], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+12, idx_Rt2, Rt[66], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+13, idx_Rt2, Rt[68], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+14, idx_Rt2, Rt[69], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+15, idx_Rt2, Rt[71], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+16, idx_Rt2, Rt[74], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+17, idx_Rt2, Rt[75], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+18, idx_Rt2, Rt[77], sizeof(double));
+        MM_SCATTER(Rt2+16*20*SIMDD+19, idx_Rt2, Rt[80], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+0, idx_Rt2, -Rt[50], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+1, idx_Rt2, -Rt[51], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+2, idx_Rt2, -Rt[52], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+3, idx_Rt2, -Rt[53], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+4, idx_Rt2, -Rt[55], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+5, idx_Rt2, -Rt[56], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+6, idx_Rt2, -Rt[57], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+7, idx_Rt2, -Rt[59], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+8, idx_Rt2, -Rt[60], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+9, idx_Rt2, -Rt[62], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+10, idx_Rt2, -Rt[65], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+11, idx_Rt2, -Rt[66], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+12, idx_Rt2, -Rt[67], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+13, idx_Rt2, -Rt[69], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+14, idx_Rt2, -Rt[70], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+15, idx_Rt2, -Rt[72], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+16, idx_Rt2, -Rt[75], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+17, idx_Rt2, -Rt[76], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+18, idx_Rt2, -Rt[78], sizeof(double));
+        MM_SCATTER(Rt2+17*20*SIMDD+19, idx_Rt2, -Rt[81], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+0, idx_Rt2, -Rt[54], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+1, idx_Rt2, -Rt[55], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+2, idx_Rt2, -Rt[56], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+3, idx_Rt2, -Rt[57], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+4, idx_Rt2, -Rt[58], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+5, idx_Rt2, -Rt[59], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+6, idx_Rt2, -Rt[60], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+7, idx_Rt2, -Rt[61], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+8, idx_Rt2, -Rt[62], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+9, idx_Rt2, -Rt[63], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+10, idx_Rt2, -Rt[68], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+11, idx_Rt2, -Rt[69], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+12, idx_Rt2, -Rt[70], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+13, idx_Rt2, -Rt[71], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+14, idx_Rt2, -Rt[72], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+15, idx_Rt2, -Rt[73], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+16, idx_Rt2, -Rt[77], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+17, idx_Rt2, -Rt[78], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+18, idx_Rt2, -Rt[79], sizeof(double));
+        MM_SCATTER(Rt2+18*20*SIMDD+19, idx_Rt2, -Rt[82], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+0, idx_Rt2, -Rt[64], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+1, idx_Rt2, -Rt[65], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+2, idx_Rt2, -Rt[66], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+3, idx_Rt2, -Rt[67], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+4, idx_Rt2, -Rt[68], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+5, idx_Rt2, -Rt[69], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+6, idx_Rt2, -Rt[70], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+7, idx_Rt2, -Rt[71], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+8, idx_Rt2, -Rt[72], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+9, idx_Rt2, -Rt[73], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+10, idx_Rt2, -Rt[74], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+11, idx_Rt2, -Rt[75], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+12, idx_Rt2, -Rt[76], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+13, idx_Rt2, -Rt[77], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+14, idx_Rt2, -Rt[78], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+15, idx_Rt2, -Rt[79], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+16, idx_Rt2, -Rt[80], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+17, idx_Rt2, -Rt[81], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+18, idx_Rt2, -Rt[82], sizeof(double));
+        MM_SCATTER(Rt2+19*20*SIMDD+19, idx_Rt2, -Rt[83], sizeof(double));
+}
+
+void get_Rt2_simd(double *Rt2, int l1, int l2, __MD a, __MD fac, __MD *rpq, __MD *buf,
+                  __MI32 idx_Rt2, int len2)
+{
+        switch (l1*LMAX*2+l2) {
+        case (0*LMAX*2+0): return Rt2_0_0_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (0*LMAX*2+1): return Rt2_0_1_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (0*LMAX*2+2): return Rt2_0_2_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (0*LMAX*2+3): return Rt2_0_3_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (1*LMAX*2+0): return Rt2_1_0_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (1*LMAX*2+1): return Rt2_1_1_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (1*LMAX*2+2): return Rt2_1_2_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (1*LMAX*2+3): return Rt2_1_3_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (2*LMAX*2+0): return Rt2_2_0_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (2*LMAX*2+1): return Rt2_2_1_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (2*LMAX*2+2): return Rt2_2_2_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (2*LMAX*2+3): return Rt2_2_3_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (3*LMAX*2+0): return Rt2_3_0_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (3*LMAX*2+1): return Rt2_3_1_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (3*LMAX*2+2): return Rt2_3_2_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        case (3*LMAX*2+3): return Rt2_3_3_simd(Rt2, a, fac, rpq, buf, idx_Rt2);
+        }
+
+        __MD *_Rt2 = (__MD *)Rt2;
+        int l = l1 + l2;
+        int e, f, g, t, u, v, n1, n2;
+        if (l1 == 0) {
+                get_R_tensor_simd(buf, l, a, fac, rpq, _Rt2);
+                for (int n = 0, e = 0; e <= l1; e++) {
+                for (f = 0; f <= l1-e; f++) {
+                for (g = 0; g <= l1-e-f; g++, n++) {
+                        MM_SCATTER(Rt2+n, idx_Rt2, buf[n], sizeof(double));
+                } } }
+                return;
+        }
+        if (l2 == 0) {
+                get_R_tensor_simd(buf, l, a, fac, rpq, _Rt2);
+                for (int n = 0, e = 0; e <= l1; e++) {
+                for (f = 0; f <= l1-e; f++) {
+                for (g = 0; g <= l1-e-f; g++, n++) {
+                        if ((e + f + g) % 2 == 1) {
+                                MM_SCATTER(Rt2+n, idx_Rt2, -buf[n], sizeof(double));
+                        } else {
+                                MM_SCATTER(Rt2+n, idx_Rt2, buf[n], sizeof(double));
+                        }
+                } } }
+                return;
+        }
+
+        get_R_tensor_simd(_Rt2, l, a, fac, rpq, buf);
+        int stride_l = (l+1);
+        int stride_ll = stride_l * (l+1);
+        __MD *Rsub;
+        for (int n = 0, t = 0; t <= l; t++) {
+                Rsub = buf + t*stride_ll;
+                for (u = 0; u <= l-t; u++) {
+#pragma GCC ivdep
+                for (v = 0; v <= l-t-u; v++, n++) {
+                        Rsub[u*stride_l+v] = _Rt2[n];
+                } }
+        }
+
+        for (n1 = 0, e = 0; e <= l1; e++) {
+        for (f = 0; f <= l1-e; f++) {
+        for (g = 0; g <= l1-e-f; g++, n1++) {
+                if ((e + f + g) % 2 == 0) {
+                        for (n2 = 0, t = 0; t <= l2; t++) {
+                                Rsub = buf + (e+t)*stride_ll + f*stride_l + g;
+                                for (u = 0; u <= l2-t; u++) {
+#pragma GCC ivdep
+                                for (v = 0; v <= l2-t-u; v++, n2++) {
+                                        MM_SCATTER(Rt2+n1*len2+n2, idx_Rt2, Rsub[u*stride_l+v], sizeof(double));
+                                } }
+                        }
+                } else {
+                        for (n2 = 0, t = 0; t <= l2; t++) {
+                                Rsub = buf + (e+t)*stride_ll + f*stride_l + g;
+                                for (u = 0; u <= l2-t; u++) {
+#pragma GCC ivdep
+                                for (v = 0; v <= l2-t-u; v++, n2++) {
+                                        MM_SCATTER(Rt2+n1*len2+n2, idx_Rt2, -Rsub[u*stride_l+v], sizeof(double));
+                                } }
+                        }
+                }
+        } } }
+        return;
+}
+#endif
