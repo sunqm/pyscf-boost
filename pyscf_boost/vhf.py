@@ -1,11 +1,8 @@
-import time
 import ctypes
 import numpy as np
-from pyscf import gto
 from pyscf.lib import logger
 from pyscf.gto import ANG_OF, ATOM_OF, NPRIM_OF, NCTR_OF, PTR_COORD
 from pyscf import lib
-from pyscf import scf
 from pyscf.scf._vhf import libcvhf
 
 __all__ = [
@@ -146,7 +143,9 @@ def _get_jk(mf, mol=None, dm=None, hermi=1, with_j=True, with_k=True,
 
     vj, vk = get_jk(mol, dm, hermi, vhfopt, with_j, with_k, omega, verbose=log)
     return vj, vk
+
 # TODO: patch to hf.SCF.get_jk
+#from pyscf import scf
 #scf.hf.SCF.get_jk = _get_jk
 
 class _VHFOpt:
@@ -246,28 +245,17 @@ def _make_j_engine_pair_locs(mol):
     prim_pair_locs = np.append(0, np.cumsum((nfij*nprim[:,None]*nprim).ravel()))
     return prim_pair_locs.astype(np.int32)
 
-def _gto_norm(l, expnt):
-    '''Radial part normalization'''
-    assert l >= 0
-    # Radial part normalization
-    norm = (gto.gaussian_int(l*2+2, 2*expnt)) ** -.5
-    # Racah normalization, assuming angular part is normalized to unity
-    # Apply to s and p functions only, to make cartesian functions compatible
-    # with libcint results.
-    if l < 2:
-        norm *= ((2*l+1)/(4*np.pi))**.5
-    return norm
-
 def _MD_ctr_coeffs(mol):
     nbas = mol.nbas
-    exps = mol.bas_exps()
-    cs = [mol.bas_ctr_coeff(i) for i in range(nbas)]
-    norm_cs = []
+    cs = [mol._libcint_ctr_coeff(i).ravel() for i in range(nbas)]
     for i in range(nbas):
         l = mol.bas_angular(i)
-        c = _gto_norm(l, exps[i])[:,None] * cs[i]
-        norm_cs.append(c.ravel())
-    return np.hstack(norm_cs)
+        # Racah normalization, assuming angular part is normalized to unity
+        # Apply to s and p functions only, to make cartesian functions compatible
+        # with libcint results.
+        if l < 2:
+            cs[i] *= ((2*l+1)/(4*np.pi))**.5
+    return np.hstack(cs)
 
 def _cache_E_tensor(mol, bas_loc, max_memory=ET_CACHE_MAXMEM):
     nbas = mol.nbas

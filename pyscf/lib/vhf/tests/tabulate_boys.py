@@ -3,7 +3,6 @@ import tempfile
 import pickle
 import numpy as np
 import scipy.special
-import numba
 import mpmath as mp
 
 DECIMALS = 30
@@ -89,8 +88,10 @@ def tabulate_chebfit():
     return cs
 
 db_file = 'chebfit_tab.pkl'
-with open(db_file, 'rb') as f:
-    chebfit_tab = pickle.load(f)
+#with open(db_file, 'rb') as f:
+#    chebfit_tab = pickle.load(f)
+#with open(db_file, 'wb') as f:
+#    pickle.dump(tabulate_chebfit(), f)
 
 def polynomial_approx(l, t):
     #chebfit_tab = tabulate_chebfit()
@@ -126,9 +127,6 @@ def dump_chebfit_tab(chebfit_tab):
     print('};')
 
 if __name__ == '__main__':
-    #dump_chebfit_tab(chebfit_tab)
-    l = 7
-    t = 1e-3
-    val = polynomial_approx(l, t)
-    ref = boys(l, t)[l]
-    print(val - ref, ref)
+    with open(db_file, 'rb') as f:
+        chebfit_tab = pickle.load(f)
+    dump_chebfit_tab(chebfit_tab)
